@@ -91,14 +91,25 @@ fn test_sandbox_gui_and_fontconfig_mounts() {
     // Verify browser nested-sandbox overrides
     assert!(args.iter().any(|a| a == "MOZ_DISABLE_CONTENT_SANDBOX"));
     assert!(args.iter().any(|a| a == "MOZ_DISABLE_SANDBOX"));
+    assert!(args.iter().any(|a| a == "ELECTRON_DISABLE_SANDBOX"));
     assert!(args.iter().any(|a| a == "NO_AT_SPI_BUS"));
     assert!(args.iter().any(|a| a == "SESSION_MANAGER"));
+    assert!(args.iter().any(|a| a == "/opt"));
 
     // Verify application shims were generated and made executable
     let shim_firefox = tmp.path().join("shims/bin/firefox");
     assert!(shim_firefox.exists());
     let shim_content = std::fs::read_to_string(&shim_firefox).unwrap();
     assert!(shim_content.contains("MOZ_DISABLE_CONTENT_SANDBOX=1"));
+
+    let shim_chrome = tmp.path().join("shims/bin/google-chrome");
+    assert!(shim_chrome.exists());
+    let shim_chromium = tmp.path().join("shims/bin/chromium");
+    assert!(shim_chromium.exists());
+    let shim_brave = tmp.path().join("shims/bin/brave");
+    assert!(shim_brave.exists());
+    let shim_code = tmp.path().join("shims/bin/code");
+    assert!(shim_code.exists());
 }
 
 #[test]

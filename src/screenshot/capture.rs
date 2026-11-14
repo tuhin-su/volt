@@ -30,21 +30,35 @@ impl ScreenshotEngine {
         }
     }
 
-    /// Capture screenshot and log to manifest
+    /// Capture screenshot across any Linux desktop environment and display server
     pub fn capture(&self, trigger_type: &str, label: Option<&str>) -> Result<ScreenshotRecord> {
         let ts_name = now_filename_safe();
         let tag = label.unwrap_or(trigger_type);
         let filename = format!("{}_{}.png", ts_name, tag);
         let out_path = self.screenshots_dir.join(&filename);
 
-        // Try capture tools in order: grim (wlroots) -> gnome-screenshot (GNOME Wayland) -> scrot -> import (X11/XWayland)
+        // Multi-tier cascade across all desktop environments and display protocols:
+        // 1. Wayland (wlroots: Sway, Hyprland, Wayfire, River)
+        // 2. GNOME Wayland / X11 (Ubuntu, Fedora, Debian)
+        // 3. KDE Plasma Wayland / X11 (Spectacle)
+        // 4. Deepin Desktop Environment (DDE)
+        // 5. XFCE (xfce4-screenshooter)
+        // 6. MATE (mate-screenshot)
+        // 7. Modern X11 / Arch (maim)
+        // 8. Standard X11 (scrot)
+        // 9. ImageMagick X11 / XWayland (import)
         let captured = try_capture_wayland(&out_path)
             || try_capture_gnome(&out_path)
+            || try_capture_kde(&out_path)
+            || try_capture_deepin(&out_path)
+            || try_capture_xfce(&out_path)
+            || try_capture_mate(&out_path)
+            || try_capture_maim(&out_path)
             || try_capture_scrot(&out_path)
             || try_capture_import(&out_path);
 
         if !captured || !out_path.exists() {
-            // If headless or no X11/Wayland display server is available, create a placeholder diagnostic image
+            // Headless / server fallback
             std::fs::write(&out_path, format!("VOLT Headless Capture - {}\nDisplay server unavailable\n", now_rfc3339()))?;
         }
 
@@ -72,6 +86,7 @@ impl ScreenshotEngine {
     }
 }
 
+/// wlroots Wayland: Sway, Hyprland, Wayfire
 fn try_capture_wayland(path: &Path) -> bool {
     Command::new("grim")
         .arg(path)
@@ -80,6 +95,7 @@ fn try_capture_wayland(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// GNOME Wayland and X11
 fn try_capture_gnome(path: &Path) -> bool {
     Command::new("gnome-screenshot")
         .arg("-f")
@@ -89,6 +105,68 @@ fn try_capture_gnome(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// KDE Plasma Wayland and X11 (Spectacle)
+fn try_capture_kde(path: &Path) -> bool {
+    Command::new("spectacle")
+        .arg("-b")
+        .arg("-n")
+        .arg("-o")
+        .arg(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Deepin Desktop Environment (DDE)
+fn try_capture_deepin(path: &Path) -> bool {
+    if Command::new("deepin-screen-recorder")
+        .arg("-s")
+        .arg(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    Command::new("deepin-screenshot")
+        .arg("-s")
+        .arg(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// XFCE Desktop
+fn try_capture_xfce(path: &Path) -> bool {
+    Command::new("xfce4-screenshooter")
+        .arg("-f")
+        .arg("-s")
+        .arg(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// MATE Desktop
+fn try_capture_mate(path: &Path) -> bool {
+    Command::new("mate-screenshot")
+        .arg("-f")
+        .arg(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Modern X11 (maim)
+fn try_capture_maim(path: &Path) -> bool {
+    Command::new("maim")
+        .arg(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Classic X11 (scrot)
 fn try_capture_scrot(path: &Path) -> bool {
     Command::new("scrot")
         .arg(path)
@@ -97,6 +175,7 @@ fn try_capture_scrot(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// ImageMagick X11 / XWayland (import)
 fn try_capture_import(path: &Path) -> bool {
     Command::new("import")
         .arg("-window")

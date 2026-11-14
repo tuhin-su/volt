@@ -16,7 +16,7 @@ impl SandboxLauncher {
         }
     }
 
-    /// Build the bwrap command argument list
+    /// Build the bwrap command argument list with universal support for any Linux OS and Desktop Environment
     pub fn build_bwrap_args(&self, mounts: &SandboxMounts, user_command: Option<&str>) -> Vec<String> {
         let mut args: Vec<String> = Vec::new();
 
@@ -34,7 +34,7 @@ impl SandboxLauncher {
         args.push("--hostname".to_string());
         args.push(self.profile.hostname.clone());
 
-        // 4. Base filesystem mounts (read-only host tools and system libraries)
+        // 4. Base filesystem mounts (read-only host tools, libraries, and third-party tools in /opt)
         args.push("--ro-bind".to_string());
         args.push("/usr".to_string());
         args.push("/usr".to_string());
@@ -46,6 +46,15 @@ impl SandboxLauncher {
         args.push("--ro-bind-try".to_string());
         args.push("/lib64".to_string());
         args.push("/lib64".to_string());
+
+        args.push("--ro-bind-try".to_string());
+        args.push("/lib32".to_string());
+        args.push("/lib32".to_string());
+
+        // Third-party software directory (Chrome, Brave, VS Code, Burp Suite, etc.)
+        args.push("--ro-bind-try".to_string());
+        args.push("/opt".to_string());
+        args.push("/opt".to_string());
 
         // Symlinks for merged /bin and /sbin
         args.push("--symlink".to_string());
@@ -62,13 +71,13 @@ impl SandboxLauncher {
         args.push("--proc".to_string());
         args.push("/proc".to_string());
 
-        // POSIX shared memory (/dev/shm) tmpfs — required for X11 MIT-SHM, Wayland, and browser renderers
+        // POSIX shared memory (/dev/shm) tmpfs — required for X11 MIT-SHM, Wayland wl_shm, and Chromium/Firefox
         args.push("--dir".to_string());
         args.push("/dev/shm".to_string());
         args.push("--tmpfs".to_string());
         args.push("/dev/shm".to_string());
 
-        // GPU Direct Rendering for accelerated graphics
+        // GPU Direct Rendering for accelerated graphics across Mesa / Intel / AMD / NVIDIA
         args.push("--dev-bind-try".to_string());
         args.push("/dev/dri".to_string());
         args.push("/dev/dri".to_string());
@@ -77,7 +86,7 @@ impl SandboxLauncher {
         args.push("--dir".to_string());
         args.push("/etc".to_string());
 
-        // Host configurations needed for Fontconfig, themes, desktop integration, SSL, and network tools
+        // Universal system configuration directories across all Linux distros
         let host_etc_mounts = [
             "/etc/fonts",
             "/etc/ssl",
@@ -151,6 +160,11 @@ impl SandboxLauncher {
         args.push(spoof.join("etc/machine-id").to_string_lossy().to_string());
         args.push("/etc/machine-id".to_string());
 
+        // Also spoof /var/lib/dbus/machine-id if present on host
+        args.push("--ro-bind-try".to_string());
+        args.push(spoof.join("etc/machine-id").to_string_lossy().to_string());
+        args.push("/var/lib/dbus/machine-id".to_string());
+
         args.push("--ro-bind-try".to_string());
         args.push(spoof.join("proc/cpuinfo").to_string_lossy().to_string());
         args.push("/proc/cpuinfo".to_string());
@@ -193,7 +207,7 @@ impl SandboxLauncher {
         args.push("/tmp/.ICE-unix".to_string());
         args.push("/tmp/.ICE-unix".to_string());
 
-        // Forward Wayland / PipeWire runtime directory if present on host
+        // Forward Wayland / PipeWire / PulseAudio runtime directory if present on host
         if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
             if Path::new(&runtime_dir).exists() {
                 args.push("--ro-bind-try".to_string());
@@ -229,23 +243,57 @@ impl SandboxLauncher {
         args.push("TERM".to_string());
         args.push(host_term);
 
-        // Forward GUI display variables
+        // Forward and auto-detect GUI display variables (X11 & Wayland)
         if let Ok(display) = std::env::var("DISPLAY") {
             args.push("--setenv".to_string());
             args.push("DISPLAY".to_string());
             args.push(display);
+        } else if Path::new("/tmp/.X11-unix/X0").exists() {
+            args.push("--setenv".to_string());
+            args.push("DISPLAY".to_string());
+            args.push(":0".to_string());
         }
 
         if let Ok(wayland_display) = std::env::var("WAYLAND_DISPLAY") {
             args.push("--setenv".to_string());
             args.push("WAYLAND_DISPLAY".to_string());
             args.push(wayland_display);
+        } else if let Ok(ref runtime) = std::env::var("XDG_RUNTIME_DIR") {
+            if Path::new(runtime).join("wayland-0").exists() {
+                args.push("--setenv".to_string());
+                args.push("WAYLAND_DISPLAY".to_string());
+                args.push("wayland-0".to_string());
+            }
         }
 
-        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+        if let Ok(ref runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
             args.push("--setenv".to_string());
             args.push("XDG_RUNTIME_DIR".to_string());
-            args.push(runtime_dir);
+            args.push(runtime_dir.clone());
+
+            // Auto-configure PulseAudio / PipeWire audio server
+            let pulse_socket = Path::new(runtime_dir).join("pulse/native");
+            if pulse_socket.exists() {
+                args.push("--setenv".to_string());
+                args.push("PULSE_SERVER".to_string());
+                args.push(format!("unix:{}", pulse_socket.display()));
+            }
+        }
+
+        // Forward Desktop Environment integration variables (GNOME, KDE Plasma, DDE / Deepin, XFCE, Cinnamon, MATE)
+        for var in &[
+            "XDG_CURRENT_DESKTOP",
+            "XDG_SESSION_TYPE",
+            "DESKTOP_SESSION",
+            "QT_QPA_PLATFORMTHEME",
+            "QT_QPA_PLATFORM",
+            "GDK_BACKEND",
+        ] {
+            if let Ok(val) = std::env::var(var) {
+                args.push("--setenv".to_string());
+                args.push(var.to_string());
+                args.push(val);
+            }
         }
 
         let xauth_path = self.case_dir.join("overlay/upper/.Xauthority");
@@ -266,6 +314,10 @@ impl SandboxLauncher {
 
         args.push("--setenv".to_string());
         args.push("NO_SANDBOX".to_string());
+        args.push("1".to_string());
+
+        args.push("--setenv".to_string());
+        args.push("ELECTRON_DISABLE_SANDBOX".to_string());
         args.push("1".to_string());
 
         args.push("--setenv".to_string());

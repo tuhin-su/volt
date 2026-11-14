@@ -1,0 +1,6 @@
+cases_dir = "./cases"
+default_hardware_profile = "vm-virtualbox"
+screenshot_interval_secs = 30
+pcap_rotate_mb = 100
+disk_warning_pct = 80
+disk_emergency_seal_pct = 95

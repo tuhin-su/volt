@@ -1,0 +1,22 @@
+{
+  "name": "laptop-dell",
+  "hostname": "DESKTOP-DELL-5520",
+  "machine_id": "a92e1044cf8b4754a6db2410a88091bc",
+  "os_name": "Ubuntu 22.04.4 LTS",
+  "os_version": "22.04",
+  "product_name": "Latitude 5520",
+  "product_version": "01",
+  "product_serial": "7X9821A",
+  "product_uuid": "e9314ca2-7104-43cb-b391-72901a88cf10",
+  "board_vendor": "Dell Inc.",
+  "board_name": "0X9K12",
+  "board_version": "A00",
+  "board_serial": "/7X9821A/CN12963/",
+  "bios_vendor": "Dell Inc.",
+  "bios_version": "1.28.0",
+  "bios_date": "04/18/2023",
+  "chassis_type": "10",
+  "cpu_model": "11th Gen Intel(R) Core(TM) i7-1185G7 @ 3.00GHz",
+  "cpu_cores": 8,
+  "mac_address": "b8:85:84:11:4a:2f"
+}

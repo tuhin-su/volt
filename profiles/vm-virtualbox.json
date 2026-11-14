@@ -1,0 +1,22 @@
+{
+  "name": "vm-virtualbox",
+  "hostname": "VBOX-SEC-01",
+  "machine_id": "c1f73b88b77a4b0d8cefa31d6837a281",
+  "os_name": "Ubuntu 24.04 LTS",
+  "os_version": "24.04",
+  "product_name": "VirtualBox",
+  "product_version": "1.2",
+  "product_serial": "VB1837492019",
+  "product_uuid": "d4e2840c-35d2-43bb-a5a4-1598f804593e",
+  "board_vendor": "Oracle Corporation",
+  "board_name": "VirtualBox",
+  "board_version": "1.2",
+  "board_serial": "BS-VBOX-092144",
+  "bios_vendor": "innotek GmbH",
+  "bios_version": "VirtualBox",
+  "bios_date": "12/01/2006",
+  "chassis_type": "1",
+  "cpu_model": "Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz",
+  "cpu_cores": 4,
+  "mac_address": "08:00:27:fa:31:8b"
+}

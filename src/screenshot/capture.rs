@@ -37,8 +37,9 @@ impl ScreenshotEngine {
         let filename = format!("{}_{}.png", ts_name, tag);
         let out_path = self.screenshots_dir.join(&filename);
 
-        // Try capture tools in order: grim -> scrot -> import
+        // Try capture tools in order: grim (wlroots) -> gnome-screenshot (GNOME Wayland) -> scrot -> import (X11/XWayland)
         let captured = try_capture_wayland(&out_path)
+            || try_capture_gnome(&out_path)
             || try_capture_scrot(&out_path)
             || try_capture_import(&out_path);
 
@@ -73,6 +74,15 @@ impl ScreenshotEngine {
 
 fn try_capture_wayland(path: &Path) -> bool {
     Command::new("grim")
+        .arg(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn try_capture_gnome(path: &Path) -> bool {
+    Command::new("gnome-screenshot")
+        .arg("-f")
         .arg(path)
         .output()
         .map(|o| o.status.success())

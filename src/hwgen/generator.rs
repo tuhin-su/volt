@@ -115,12 +115,36 @@ impl HardwareProfile {
 
     /// Load by name or file path
     pub fn load_or_preset(name_or_path: &str) -> Result<Self> {
-        let path = Path::new(name_or_path);
-        if path.exists() {
-            let content = fs::read_to_string(path)
-                .with_context(|| format!("Failed to read hardware profile at {:?}", path))?;
+        let raw_path = Path::new(name_or_path);
+        if raw_path.exists() {
+            let content = fs::read_to_string(raw_path)
+                .with_context(|| format!("Failed to read hardware profile at {:?}", raw_path))?;
             let profile: HardwareProfile = serde_json::from_str(&content)?;
             return Ok(profile);
+        }
+
+        // Check standard FHS share directories: /usr/local/share/volt/profiles, /usr/share/volt/profiles, ./profiles
+        let candidate_dirs = [
+            PathBuf::from("/usr/local/share/volt/profiles"),
+            PathBuf::from("/usr/share/volt/profiles"),
+            PathBuf::from("./profiles"),
+        ];
+
+        let json_name = if name_or_path.ends_with(".json") {
+            name_or_path.to_string()
+        } else {
+            format!("{}.json", name_or_path)
+        };
+
+        for dir in &candidate_dirs {
+            let candidate = dir.join(&json_name);
+            if candidate.exists() {
+                if let Ok(content) = fs::read_to_string(&candidate) {
+                    if let Ok(profile) = serde_json::from_str::<HardwareProfile>(&content) {
+                        return Ok(profile);
+                    }
+                }
+            }
         }
 
         match name_or_path {

@@ -72,10 +72,11 @@ jobs:
           PKG_NAME="volt-${TAG}-linux-${ARCH}"
           mkdir -p "dist/${PKG_NAME}"
           
-          # Copy binary, manual, and default hardware profiles
+          # Copy binary, installation scripts, manual, and default hardware profiles
           cp "target/${{ matrix.target }}/release/volt" "dist/${PKG_NAME}/" 2>/dev/null || cp "target/release/volt" "dist/${PKG_NAME}/"
-          cp README.md "dist/${PKG_NAME}/"
+          cp install.sh uninstall.sh README.md "dist/${PKG_NAME}/"
           cp -r profiles "dist/${PKG_NAME}/"
+          chmod +x "dist/${PKG_NAME}/"*.sh
           
           # Create compressed tar.gz
           cd dist

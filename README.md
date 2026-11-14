@@ -116,15 +116,54 @@ VOLT is written in **Rust (2021 edition)** for line-rate throughput and zero run
 - `tcpdump`
 - Rust 1.75+ (for compilation)
 
-### Building from Source
+### Building & Installing to `/usr/local/bin`
+
+#### Option A: Automated `install.sh` Script (Recommended for Releases & Source)
+Both the release archives and repository include an automated installer:
 ```bash
-git clone https://github.com/your-org/volt.git /mwp/volt
-cd /mwp/volt
-cargo build --release
+sudo ./install.sh
 ```
-The compiled static binary is available at:
+This script automatically:
+1. Installs the binary to `/usr/local/bin/volt`.
+2. Installs default hardware profile templates (`laptop-dell`, `vm-virtualbox`, `desktop-hp`) to standard Linux application storage: `/usr/local/share/volt/profiles/`.
+3. Grants `CAP_NET_RAW` capability via `setcap` for raw stealth scans (`nmap -sS`).
+4. Verifies installation.
+
+To completely uninstall at any time:
 ```bash
-./target/release/volt
+sudo ./uninstall.sh
+```
+
+#### Option B: Using `make install`
+From the project directory:
+```bash
+sudo make install
+```
+
+#### Option C: Manual Installation from Release Archive (No Compiler Needed)
+```bash
+# 1. Download release archive (replace with latest version)
+curl -LO https://github.com/your-org/volt/releases/latest/download/volt-v0.1.0-linux-x86_64.tar.gz
+
+# 2. Extract archive
+tar -xzf volt-v0.1.0-linux-x86_64.tar.gz
+cd volt-v0.1.0-linux-x86_64
+
+# 3. Run included installer
+sudo ./install.sh
+```
+```bash
+# 1. Compile the release binary
+cargo build --release
+
+# 2. Copy binary to /usr/local/bin
+sudo install -m 755 target/release/volt /usr/local/bin/volt
+
+# 3. (Optional) Grant raw socket capabilities for stealth SYN scans
+sudo setcap cap_net_raw,cap_net_admin+eip /usr/local/bin/volt
+
+# 4. Verify installation
+volt --version
 ```
 
 ### Automated GitHub Releases (CI/CD)

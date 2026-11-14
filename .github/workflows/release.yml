@@ -1,0 +1,98 @@
+name: Release & Publish VOLT Binary
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release Tag Version (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Release Binary (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            arch: x86_64
+            use_cross: false
+          - target: aarch64-unknown-linux-gnu
+            arch: aarch64
+            use_cross: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Version Tag
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG_NAME=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap tcpdump libpcap-dev
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Binary (Native or Cross)
+        if: ${{ !matrix.use_cross }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build Binary with Cross (ARM64)
+        if: ${{ matrix.use_cross }}
+        run: |
+          cargo install cross --git https://github.com/cross-rs/cross || true
+          cross build --release --target ${{ matrix.target }} || cargo build --release --target ${{ matrix.target }}
+
+      - name: Package Release Archive
+        run: |
+          TAG="${{ steps.vars.outputs.TAG_NAME }}"
+          ARCH="${{ matrix.arch }}"
+          PKG_NAME="volt-${TAG}-linux-${ARCH}"
+          mkdir -p "dist/${PKG_NAME}"
+          
+          # Copy binary, manual, and default hardware profiles
+          cp "target/${{ matrix.target }}/release/volt" "dist/${PKG_NAME}/" 2>/dev/null || cp "target/release/volt" "dist/${PKG_NAME}/"
+          cp README.md "dist/${PKG_NAME}/"
+          cp -r profiles "dist/${PKG_NAME}/"
+          
+          # Create compressed tar.gz
+          cd dist
+          tar -czf "${PKG_NAME}.tar.gz" "${PKG_NAME}"
+          sha256sum "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
+          cd ..
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.TAG_NAME }}
+          name: "VOLT Release ${{ steps.vars.outputs.TAG_NAME }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

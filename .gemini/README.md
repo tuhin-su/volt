@@ -127,6 +127,18 @@ The compiled static binary is available at:
 ./target/release/volt
 ```
 
+### Automated GitHub Releases (CI/CD)
+To publish a new official version release with pre-compiled binaries and SHA-256 checksums, simply tag and push:
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+The automated [release pipeline](.github/workflows/release.yml) will:
+1. Build optimized binaries for both `x86_64` and `aarch64` (ARM64) Linux.
+2. Package binaries with default hardware profiles and the manual into `.tar.gz` bundles.
+3. Compute cryptographic SHA-256 checksums (`.sha256`).
+4. Publish a formal GitHub Release with automated changelog notes.
+
 ---
 
 ## 🎯 Operation Profiles

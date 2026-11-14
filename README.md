@@ -121,24 +121,30 @@ VOLT is written in **Rust (2021 edition)** for line-rate throughput and zero run
 #### Option A: Automated `install.sh` Script (Recommended for Releases & Source)
 Both the release archives and repository include an automated installer:
 ```bash
-sudo ./install.sh
+./install.sh
 ```
+> [!NOTE]
+> Compilation always runs under your current user account, ensuring `target/` directory ownership is never hijacked by root. `sudo` is only invoked when copying the binary to `/usr/local/bin` and hardware profiles to `/usr/local/share/volt/profiles/`.
+
 This script automatically:
-1. Installs the binary to `/usr/local/bin/volt`.
-2. Installs default hardware profile templates (`laptop-dell`, `vm-virtualbox`, `desktop-hp`) to standard Linux application storage: `/usr/local/share/volt/profiles/`.
-3. Grants `CAP_NET_RAW` capability via `setcap` for raw stealth scans (`nmap -sS`).
-4. Verifies installation.
+1. Compiles the release binary (if building from source) as the current user.
+2. Installs the binary to `/usr/local/bin/volt`.
+3. Installs default hardware profile templates (`laptop-dell`, `vm-virtualbox`, `desktop-hp`) to standard Linux application storage: `/usr/local/share/volt/profiles/`.
+4. Grants `CAP_NET_RAW` capability via `setcap` for raw stealth scans (`nmap -sS`).
+5. Verifies installation.
 
 To completely uninstall at any time:
 ```bash
-sudo ./uninstall.sh
+./uninstall.sh
 ```
 
 #### Option B: Using `make install`
 From the project directory:
 ```bash
+make
 sudo make install
 ```
+*(Or simply run `make install` — it builds with your current user account and prompts for `sudo` only to copy binary and profile files to system directories).*
 
 #### Option C: Manual Installation from Release Archive (No Compiler Needed)
 ```bash
@@ -205,6 +211,10 @@ Initializes a new evidence case directory and generates Genesis Block 0 of the h
 ```bash
 volt init [OPTIONS] --case <CASE_ID>
 ```
+
+> [!TIP]
+> **Global Centralized Storage (`~/.cases`):**
+> Cases are stored by default in `~/.cases/<case_name>` (configurable via `VOLT_CASES_DIR` or `volt.toml`). You can run `volt init`, `volt start`, `volt join`, and `volt status` from **ANY working directory** across your system! Existing cases in `./cases` or `~/Documents/cases` are also automatically discovered and accessible.
 
 **Options:**
 - `-c, --case <NAME>`: Unique identifier for the case (e.g. `IR-2026-0042`). *(Required)*

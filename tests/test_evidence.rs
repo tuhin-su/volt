@@ -66,4 +66,88 @@ fn test_hardware_spoof_tree() {
 
     let hostname = std::fs::read_to_string(spoof_dir.join("etc/hostname")).unwrap();
     assert!(hostname.trim().starts_with("DESKTOP-"));
+
+    let hosts = std::fs::read_to_string(spoof_dir.join("etc/hosts")).unwrap();
+    assert!(hosts.contains("localhost"));
+    assert!(hosts.contains(&hostname.trim()));
+}
+
+#[test]
+fn test_sandbox_gui_and_fontconfig_mounts() {
+    let tmp = tempdir().unwrap();
+    let profile = HardwareProfile::virtualbox();
+    let mounts = volt::sandbox::SandboxMounts::prepare(tmp.path(), &profile).unwrap();
+    let launcher = volt::sandbox::SandboxLauncher::new(tmp.path(), profile);
+    let args = launcher.build_bwrap_args(&mounts, None);
+
+    // Verify Fontconfig configuration is mounted
+    assert!(args.iter().any(|a| a == "/etc/fonts"));
+    assert!(args.iter().any(|a| a == "/var/cache/fontconfig"));
+
+    // Verify POSIX shared memory and X11 unix sockets
+    assert!(args.iter().any(|a| a == "/dev/shm"));
+    assert!(args.iter().any(|a| a == "/tmp/.X11-unix"));
+
+    // Verify browser nested-sandbox overrides
+    assert!(args.iter().any(|a| a == "MOZ_DISABLE_CONTENT_SANDBOX"));
+    assert!(args.iter().any(|a| a == "MOZ_DISABLE_SANDBOX"));
+    assert!(args.iter().any(|a| a == "NO_AT_SPI_BUS"));
+    assert!(args.iter().any(|a| a == "SESSION_MANAGER"));
+
+    // Verify application shims were generated and made executable
+    let shim_firefox = tmp.path().join("shims/bin/firefox");
+    assert!(shim_firefox.exists());
+    let shim_content = std::fs::read_to_string(&shim_firefox).unwrap();
+    assert!(shim_content.contains("MOZ_DISABLE_CONTENT_SANDBOX=1"));
+}
+
+#[test]
+fn test_report_with_short_payload_hashes() {
+    let tmp = tempdir().unwrap();
+    let profile = HardwareProfile::virtualbox();
+    let case = Case::init(
+        tmp.path(),
+        "REPORT-TEST-001",
+        "InvestigatorAlice",
+        &profile.name,
+        "forensics",
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    let vault = EvidenceVault::open(&case).unwrap();
+    // Append events with varying payload lengths, including short ones (< 16 chars)
+    vault.record_event("SESSION_START", "full_64_character_sha256_genesis_hash_placeholder_1234567890abcdef").unwrap();
+    vault.record_event("SESSION_END", "exit_code:1").unwrap(); // length 11 — previously panicked!
+    vault.record_event("CUSTOM_SHORT", "abc").unwrap();        // length 3
+    vault.record_event("EMPTY_EVENT", "").unwrap();             // length 0
+
+    let tip = vault.chain.current_tip();
+    let manifest = volt::evidence::EvidenceManifest::build(
+        &case.dir,
+        &case.metadata.case_name,
+        &case.metadata.investigator,
+        &case.metadata.hardware_profile,
+        &tip,
+    )
+    .unwrap();
+
+    // Must not panic on short payload strings
+    let report = volt::evidence::ReportGenerator::generate_markdown(&case, &manifest).unwrap();
+    assert!(report.contains("REPORT-TEST-001"));
+    assert!(report.contains("exit_code:1"));
+    assert!(report.contains("CUSTOM_SHORT"));
+}
+
+#[test]
+fn test_default_cases_dir_tilde_expansion() {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let default_dir = volt::core::config::default_case_dir();
+    assert_eq!(default_dir, std::path::PathBuf::from(home).join(".cases"));
+
+    let expanded = volt::core::config::expand_tilde("~/.cases/test-case");
+    assert!(!expanded.to_string_lossy().starts_with("~"));
+    assert!(expanded.to_string_lossy().ends_with(".cases/test-case"));
 }

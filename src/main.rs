@@ -25,11 +25,14 @@ async fn main() -> Result<()> {
         if Path::new("volt.toml").exists() {
             PathBuf::from("volt.toml")
         } else if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(&home).join(".volt/volt.toml");
-            if p.exists() {
-                p
+            let user_volt = PathBuf::from(&home).join(".volt/volt.toml");
+            let user_config = PathBuf::from(&home).join(".config/volt/volt.toml");
+            if user_volt.exists() {
+                user_volt
+            } else if user_config.exists() {
+                user_config
             } else {
-                PathBuf::from("./volt.toml")
+                user_volt
             }
         } else {
             PathBuf::from("./volt.toml")
@@ -41,6 +44,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Init {
             case,
+            case_pos,
             investigator,
             profile,
             mode,
@@ -48,9 +52,10 @@ async fn main() -> Result<()> {
             warrant,
             evidence_id,
         } => {
+            let case_name = resolve_case(case, case_pos)?;
             handle_init(
                 &config,
-                &case,
+                &case_name,
                 &investigator,
                 &profile,
                 &mode,
@@ -59,40 +64,116 @@ async fn main() -> Result<()> {
                 evidence_id,
             )?;
         }
-        Commands::Start { case, profile } => {
-            handle_start(&config, &case, profile).await?;
-        }
-        Commands::Join { case, cmd, label } => {
-            handle_exec(&config, &case, cmd.as_deref(), label.as_deref())?;
-        }
-        Commands::Stop { case } => {
-            handle_stop(&config, &case)?;
-        }
-        Commands::Seal { case, sign, gpg_key } => {
-            handle_seal(&config, &case, sign, gpg_key)?;
-        }
-        Commands::Verify { target } => {
-            handle_verify(&target)?;
-        }
-        Commands::Report { case, format, output } => {
-            handle_report(&config, &case, &format, output)?;
-        }
-        Commands::Status { case } => {
-            handle_status(&config, case)?;
-        }
-        Commands::Screenshot { case, label } => {
-            handle_screenshot(&config, &case, label.as_deref())?;
-        }
-        Commands::Export {
+        Commands::Start {
             case,
+            case_pos,
+            profile,
+        } => {
+            let case_name = resolve_case(case, case_pos)?;
+            handle_start(&config, &case_name, profile).await?;
+        }
+        Commands::Join {
+            case,
+            case_pos,
+            cmd,
+            label,
+        } => {
+            let case_name = resolve_case(case, case_pos)?;
+            handle_exec(&config, &case_name, cmd.as_deref(), label.as_deref())?;
+        }
+        Commands::Stop { case, case_pos } => {
+            let case_name = resolve_case(case, case_pos)?;
+            handle_stop(&config, &case_name)?;
+        }
+        Commands::Seal {
+            case,
+            case_pos,
+            sign,
+            gpg_key,
+        } => {
+            let case_name = resolve_case(case, case_pos)?;
+            handle_seal(&config, &case_name, sign, gpg_key)?;
+        }
+        Commands::Verify { target, case } => {
+            let target_str = target
+                .or(case)
+                .ok_or_else(|| anyhow::anyhow!("Missing target case directory or .volt bundle to verify."))?;
+            handle_verify(&config, &target_str)?;
+        }
+        Commands::Report {
+            case,
+            case_pos,
             format,
             output,
         } => {
-            handle_export(&config, &case, &format, output)?;
+            let case_name = resolve_case(case, case_pos)?;
+            handle_report(&config, &case_name, &format, output)?;
+        }
+        Commands::Status { case, case_pos } => {
+            let filter = case.or(case_pos);
+            handle_status(&config, filter)?;
+        }
+        Commands::Screenshot {
+            case,
+            case_pos,
+            label,
+        } => {
+            let case_name = resolve_case(case, case_pos)?;
+            handle_screenshot(&config, &case_name, label.as_deref())?;
+        }
+        Commands::Export {
+            case,
+            case_pos,
+            format,
+            output,
+        } => {
+            let case_name = resolve_case(case, case_pos)?;
+            handle_export(&config, &case_name, &format, output)?;
         }
     }
 
     Ok(())
+}
+
+fn resolve_case(case_flag: Option<String>, case_pos: Option<String>) -> Result<String> {
+    case_flag.or(case_pos).ok_or_else(|| {
+        anyhow::anyhow!("Missing required case identifier. Specify with '--case <NAME>' or positional '<NAME>'.")
+    })
+}
+
+/// Locate a case directory across global ~/.cases, local ./cases, or direct paths
+fn find_case_dir(config: &VoltConfig, case_name: &str) -> PathBuf {
+    let direct = Path::new(case_name);
+    if direct.join("case.json").exists() {
+        return direct.to_path_buf();
+    }
+
+    let in_config = config.cases_dir.join(case_name);
+    if in_config.join("case.json").exists() {
+        return in_config;
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        let in_home = PathBuf::from(&home).join(".cases").join(case_name);
+        if in_home.join("case.json").exists() {
+            return in_home;
+        }
+        let in_home_cases = PathBuf::from(&home).join("cases").join(case_name);
+        if in_home_cases.join("case.json").exists() {
+            return in_home_cases;
+        }
+        let in_docs = PathBuf::from(&home).join("Documents/cases").join(case_name);
+        if in_docs.join("case.json").exists() {
+            return in_docs;
+        }
+    }
+
+    let in_cwd = Path::new("./cases").join(case_name);
+    if in_cwd.join("case.json").exists() {
+        return in_cwd;
+    }
+
+    in_config
 }
 
 fn handle_init(
@@ -106,8 +187,16 @@ fn handle_init(
     evidence_id: Option<String>,
 ) -> Result<()> {
     let profile = HardwareProfile::load_or_preset(profile_name)?;
+    let base_dir = if std::fs::create_dir_all(&config.cases_dir).is_ok() {
+        config.cases_dir.clone()
+    } else {
+        let fallback = PathBuf::from("./cases");
+        let _ = std::fs::create_dir_all(&fallback);
+        fallback
+    };
+
     let case = Case::init(
-        &config.cases_dir,
+        &base_dir,
         case_name,
         investigator,
         &profile.name,
@@ -139,13 +228,13 @@ fn handle_init(
     println!("  Directory:        {}", case.dir.display());
     println!("  Genesis Hash:     {}", tip);
     println!("\nLaunch session:     volt start --case {}", case_name);
-    println!("Attach terminals:   volt exec --case {}", case_name);
+    println!("Attach terminals:   volt join --case {}", case_name);
 
     Ok(())
 }
 
 async fn handle_start(config: &VoltConfig, case_name: &str, profile_override: Option<String>) -> Result<()> {
-    let case_dir = config.cases_dir.join(case_name);
+    let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
 
     if case.metadata.status == CaseStatus::Sealed {
@@ -263,7 +352,7 @@ async fn handle_start(config: &VoltConfig, case_name: &str, profile_override: Op
 }
 
 fn handle_exec(config: &VoltConfig, case_name: &str, cmd: Option<&str>, label: Option<&str>) -> Result<()> {
-    let case_dir = config.cases_dir.join(case_name);
+    let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
     let session_file = SessionInfo::session_file(&case_dir);
 
@@ -321,7 +410,7 @@ fn handle_exec(config: &VoltConfig, case_name: &str, cmd: Option<&str>, label: O
 }
 
 fn handle_stop(config: &VoltConfig, case_name: &str) -> Result<()> {
-    let case_dir = config.cases_dir.join(case_name);
+    let case_dir = find_case_dir(config, case_name);
     let session_file = SessionInfo::session_file(&case_dir);
     if !session_file.exists() {
         println!("No active session found for case '{}'", case_name);
@@ -347,7 +436,7 @@ fn handle_stop(config: &VoltConfig, case_name: &str) -> Result<()> {
 }
 
 fn handle_seal(config: &VoltConfig, case_name: &str, _sign: bool, _gpg_key: Option<String>) -> Result<()> {
-    let case_dir = config.cases_dir.join(case_name);
+    let case_dir = find_case_dir(config, case_name);
     let mut case = Case::open(&case_dir)?;
 
     let vault = EvidenceVault::open(&case)?;
@@ -370,7 +459,7 @@ fn handle_seal(config: &VoltConfig, case_name: &str, _sign: bool, _gpg_key: Opti
 }
 
 fn handle_report(config: &VoltConfig, case_name: &str, format: &str, output: Option<PathBuf>) -> Result<()> {
-    let case_dir = config.cases_dir.join(case_name);
+    let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
 
     let manifest_file = case_dir.join("evidence_manifest.json");
@@ -414,11 +503,14 @@ fn handle_report(config: &VoltConfig, case_name: &str, format: &str, output: Opt
     Ok(())
 }
 
-fn handle_verify(target: &Path) -> Result<()> {
-    let case_dir = if target.is_dir() {
+fn handle_verify(config: &VoltConfig, target: &Path) -> Result<()> {
+    let case_dir = if target.join("case.json").exists() || target.join("evidence").exists() {
         target.to_path_buf()
-    } else {
+    } else if target.is_file() {
         target.parent().unwrap_or(Path::new(".")).to_path_buf()
+    } else {
+        let name = target.to_string_lossy();
+        find_case_dir(config, &name)
     };
 
     println!("🔍 Verifying VOLT Evidence Integrity for {:?}", case_dir);
@@ -456,41 +548,75 @@ fn handle_verify(target: &Path) -> Result<()> {
 
 fn handle_status(config: &VoltConfig, case_filter: Option<String>) -> Result<()> {
     println!("⚡ VOLT Status & Storage Overview");
-    println!("  Cases directory: {}", config.cases_dir.display());
+    println!("  Default Cases directory: {}", config.cases_dir.display());
 
-    if !config.cases_dir.exists() {
-        println!("  (No cases created yet)");
-        return Ok(());
+    let mut scanned_dirs = vec![config.cases_dir.clone()];
+    if let Ok(home) = std::env::var("HOME") {
+        let home_cases = PathBuf::from(&home).join(".cases");
+        if home_cases.exists() && !scanned_dirs.contains(&home_cases) {
+            scanned_dirs.push(home_cases);
+        }
+        let legacy_cases = PathBuf::from(&home).join("cases");
+        if legacy_cases.exists() && !scanned_dirs.contains(&legacy_cases) {
+            scanned_dirs.push(legacy_cases);
+        }
+        let doc_cases = PathBuf::from(&home).join("Documents/cases");
+        if doc_cases.exists() && !scanned_dirs.contains(&doc_cases) {
+            scanned_dirs.push(doc_cases);
+        }
+    }
+    let cwd_cases = PathBuf::from("./cases");
+    if cwd_cases.exists() && !scanned_dirs.contains(&cwd_cases) {
+        scanned_dirs.push(cwd_cases);
     }
 
-    for entry in std::fs::read_dir(&config.cases_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            let name = path.file_name().unwrap_or_default().to_string_lossy();
-            if let Some(ref filter) = case_filter {
-                if !name.contains(filter) {
-                    continue;
+    let mut found_any = false;
+    let mut seen_cases = std::collections::HashSet::new();
+
+    for dir in scanned_dirs {
+        if !dir.exists() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() && path.join("case.json").exists() {
+                    let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    if seen_cases.contains(&name) {
+                        continue;
+                    }
+                    if let Some(ref filter) = case_filter {
+                        if !name.contains(filter) {
+                            continue;
+                        }
+                    }
+                    seen_cases.insert(name.clone());
+                    found_any = true;
+
+                    let active = SessionInfo::session_file(&path).exists();
+                    let status = if active {
+                        "ACTIVE (Recording - Multi-Terminal Enabled)"
+                    } else if path.join("evidence_manifest.json").exists() {
+                        "SEALED (Court-Ready)"
+                    } else {
+                        "IDLE"
+                    };
+
+                    println!("  • Case: {:<20} | Status: {:<38} | Path: {}", name, status, path.display());
                 }
             }
-            let active = SessionInfo::session_file(&path).exists();
-            let status = if active {
-                "ACTIVE (Recording - Multi-Terminal Enabled)"
-            } else if path.join("evidence_manifest.json").exists() {
-                "SEALED (Court-Ready)"
-            } else {
-                "IDLE"
-            };
-
-            println!("  • Case: {:<20} | Status: {}", name, status);
         }
+    }
+
+    if !found_any {
+        println!("  (No cases found)");
     }
 
     Ok(())
 }
 
 fn handle_screenshot(config: &VoltConfig, case_name: &str, label: Option<&str>) -> Result<()> {
-    let case_dir = config.cases_dir.join(case_name);
+    let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
     let engine = ScreenshotEngine::new(case.screenshots_dir());
     let record = engine.capture("manual", label)?;
@@ -507,7 +633,7 @@ fn handle_screenshot(config: &VoltConfig, case_name: &str, label: Option<&str>) 
 }
 
 fn handle_export(config: &VoltConfig, case_name: &str, format: &str, output: Option<PathBuf>) -> Result<()> {
-    let case_dir = config.cases_dir.join(case_name);
+    let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
 
     if case.metadata.status != CaseStatus::Sealed {

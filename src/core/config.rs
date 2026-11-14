@@ -3,6 +3,28 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
+/// Expands leading `~` into the user's `$HOME` directory if present
+pub fn expand_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
+    let p = path.as_ref();
+    if let Ok(stripped) = p.strip_prefix("~") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(stripped);
+        }
+    }
+    p.to_path_buf()
+}
+
+/// Default global cases storage directory (~/.cases)
+pub fn default_case_dir() -> PathBuf {
+    if let Ok(val) = std::env::var("VOLT_CASES_DIR") {
+        expand_tilde(val)
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".cases")
+    } else {
+        PathBuf::from("./cases")
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoltConfig {
     #[serde(default = "default_case_dir")]
@@ -22,14 +44,6 @@ pub struct VoltConfig {
 
     #[serde(default = "default_disk_emergency_seal_pct")]
     pub disk_emergency_seal_pct: u8,
-}
-
-fn default_case_dir() -> PathBuf {
-    if let Ok(val) = std::env::var("VOLT_CASES_DIR") {
-        PathBuf::from(val)
-    } else {
-        PathBuf::from("./cases")
-    }
 }
 
 fn default_hardware_profile() -> String {
@@ -71,16 +85,19 @@ impl VoltConfig {
         if path.exists() {
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read config file at {:?}", path))?;
-            let config: VoltConfig = toml::from_str(&content)
+            let mut config: VoltConfig = toml::from_str(&content)
                 .with_context(|| format!("Failed to parse TOML config at {:?}", path))?;
+            config.cases_dir = expand_tilde(&config.cases_dir);
             Ok(config)
         } else {
             let config = VoltConfig::default();
+            // Attempt to write config if parent directory is writable
             if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
+                let _ = fs::create_dir_all(parent);
             }
-            let toml_str = toml::to_string_pretty(&config)?;
-            fs::write(path, toml_str)?;
+            if let Ok(toml_str) = toml::to_string_pretty(&config) {
+                let _ = fs::write(path, toml_str);
+            }
             Ok(config)
         }
     }

@@ -20,7 +20,7 @@ impl SandboxLauncher {
     pub fn build_bwrap_args(&self, mounts: &SandboxMounts, user_command: Option<&str>) -> Vec<String> {
         let mut args: Vec<String> = Vec::new();
 
-        // 1. Unshare all namespaces EXCEPT network (retains host network)
+        // 1. Unshare all namespaces EXCEPT network (retains host network for capture & tools)
         args.push("--unshare-all".to_string());
         args.push("--share-net".to_string());
 
@@ -34,7 +34,7 @@ impl SandboxLauncher {
         args.push("--hostname".to_string());
         args.push(self.profile.hostname.clone());
 
-        // 4. Base filesystem mounts (read-only host tools)
+        // 4. Base filesystem mounts (read-only host tools and system libraries)
         args.push("--ro-bind".to_string());
         args.push("/usr".to_string());
         args.push("/usr".to_string());
@@ -47,14 +47,6 @@ impl SandboxLauncher {
         args.push("/lib64".to_string());
         args.push("/lib64".to_string());
 
-        args.push("--ro-bind-try".to_string());
-        args.push("/etc/resolv.conf".to_string());
-        args.push("/etc/resolv.conf".to_string());
-
-        args.push("--ro-bind-try".to_string());
-        args.push("/etc/ssl".to_string());
-        args.push("/etc/ssl".to_string());
-
         // Symlinks for merged /bin and /sbin
         args.push("--symlink".to_string());
         args.push("usr/bin".to_string());
@@ -64,17 +56,84 @@ impl SandboxLauncher {
         args.push("usr/sbin".to_string());
         args.push("/sbin".to_string());
 
-        // Devices and proc
+        // Devices, POSIX shared memory, and proc
         args.push("--dev".to_string());
         args.push("/dev".to_string());
         args.push("--proc".to_string());
         args.push("/proc".to_string());
 
-        // 5. Mount identity spoofing layers
+        // POSIX shared memory (/dev/shm) tmpfs — required for X11 MIT-SHM, Wayland, and browser renderers
+        args.push("--dir".to_string());
+        args.push("/dev/shm".to_string());
+        args.push("--tmpfs".to_string());
+        args.push("/dev/shm".to_string());
+
+        // GPU Direct Rendering for accelerated graphics
+        args.push("--dev-bind-try".to_string());
+        args.push("/dev/dri".to_string());
+        args.push("/dev/dri".to_string());
+
+        // 5. System configuration mounts in /etc and /var
+        args.push("--dir".to_string());
+        args.push("/etc".to_string());
+
+        // Host configurations needed for Fontconfig, themes, desktop integration, SSL, and network tools
+        let host_etc_mounts = [
+            "/etc/fonts",
+            "/etc/ssl",
+            "/etc/ca-certificates",
+            "/etc/pki",
+            "/etc/resolv.conf",
+            "/etc/localtime",
+            "/etc/timezone",
+            "/etc/mime.types",
+            "/etc/xdg",
+            "/etc/gtk-2.0",
+            "/etc/gtk-3.0",
+            "/etc/gtk-4.0",
+            "/etc/glvnd",
+            "/etc/vulkan",
+            "/etc/alternatives",
+            "/etc/nsswitch.conf",
+            "/etc/protocols",
+            "/etc/services",
+            "/etc/ld.so.cache",
+            "/etc/ld.so.conf",
+            "/etc/ld.so.conf.d",
+            "/etc/X11",
+            "/etc/inputrc",
+            "/etc/environment",
+        ];
+        for path in &host_etc_mounts {
+            args.push("--ro-bind-try".to_string());
+            args.push(path.to_string());
+            args.push(path.to_string());
+        }
+
+        // Host Fontconfig cache
+        args.push("--ro-bind-try".to_string());
+        args.push("/var/cache/fontconfig".to_string());
+        args.push("/var/cache/fontconfig".to_string());
+
+        // D-Bus and systemd resolution sockets
+        args.push("--ro-bind-try".to_string());
+        args.push("/run/dbus".to_string());
+        args.push("/run/dbus".to_string());
+
+        args.push("--ro-bind-try".to_string());
+        args.push("/run/systemd/resolve".to_string());
+        args.push("/run/systemd/resolve".to_string());
+
+        // 6. Identity spoofing layers (mounted over /etc, /proc, and /sys)
         let spoof = &mounts.spoof_dir;
+
         args.push("--ro-bind-try".to_string());
         args.push(spoof.join("etc/hostname").to_string_lossy().to_string());
         args.push("/etc/hostname".to_string());
+
+        args.push("--ro-bind-try".to_string());
+        args.push(spoof.join("etc/hosts").to_string_lossy().to_string());
+        args.push("/etc/hosts".to_string());
 
         args.push("--ro-bind-try".to_string());
         args.push(spoof.join("etc/os-release").to_string_lossy().to_string());
@@ -100,26 +159,55 @@ impl SandboxLauncher {
         args.push(spoof.join("proc/version").to_string_lossy().to_string());
         args.push("/proc/version".to_string());
 
-        // Sysfs DMI spoofing
+        // Sysfs DMI spoofing - ensure parent directories exist
+        args.push("--dir".to_string());
+        args.push("/sys".to_string());
+        args.push("--dir".to_string());
+        args.push("/sys/class".to_string());
+        args.push("--dir".to_string());
+        args.push("/sys/class/dmi".to_string());
+        args.push("--dir".to_string());
+        args.push("/sys/class/dmi/id".to_string());
+
         args.push("--ro-bind-try".to_string());
         args.push(spoof.join("sys/class/dmi/id").to_string_lossy().to_string());
         args.push("/sys/class/dmi/id".to_string());
 
-        // 6. Injected sudo shim
-        args.push("--ro-bind-try".to_string());
-        args.push(mounts.shim_bin_dir.join("sudo").to_string_lossy().to_string());
-        args.push("/usr/local/bin/sudo".to_string());
+        // 7. Transparent application shims via /volt-shims
+        args.push("--dir".to_string());
+        args.push("/volt-shims".to_string());
+        args.push("--ro-bind".to_string());
+        args.push(mounts.shim_bin_dir.to_string_lossy().to_string());
+        args.push("/volt-shims".to_string());
 
-        // 7. Writable scratch spaces (tmpfs and case overlay)
+        // 8. Writable scratch spaces (tmpfs and case overlay)
         args.push("--tmpfs".to_string());
         args.push("/tmp".to_string());
+
+        // Forward host X11 and ICE unix domain sockets into sandbox /tmp
+        args.push("--ro-bind-try".to_string());
+        args.push("/tmp/.X11-unix".to_string());
+        args.push("/tmp/.X11-unix".to_string());
+
+        args.push("--ro-bind-try".to_string());
+        args.push("/tmp/.ICE-unix".to_string());
+        args.push("/tmp/.ICE-unix".to_string());
+
+        // Forward Wayland / PipeWire runtime directory if present on host
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            if Path::new(&runtime_dir).exists() {
+                args.push("--ro-bind-try".to_string());
+                args.push(runtime_dir.clone());
+                args.push(runtime_dir);
+            }
+        }
 
         let overlay_upper = self.case_dir.join("overlay/upper");
         args.push("--bind".to_string());
         args.push(overlay_upper.to_string_lossy().to_string());
         args.push("/root".to_string());
 
-        // 8. Environment variables
+        // 9. Environment variables
         args.push("--setenv".to_string());
         args.push("USER".to_string());
         args.push("root".to_string());
@@ -134,17 +222,64 @@ impl SandboxLauncher {
 
         args.push("--setenv".to_string());
         args.push("PATH".to_string());
-        args.push("/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string());
+        args.push("/volt-shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string());
 
         let host_term = std::env::var("TERM").unwrap_or_else(|_| "xterm-256color".to_string());
         args.push("--setenv".to_string());
         args.push("TERM".to_string());
         args.push(host_term);
 
+        // Forward GUI display variables
+        if let Ok(display) = std::env::var("DISPLAY") {
+            args.push("--setenv".to_string());
+            args.push("DISPLAY".to_string());
+            args.push(display);
+        }
+
+        if let Ok(wayland_display) = std::env::var("WAYLAND_DISPLAY") {
+            args.push("--setenv".to_string());
+            args.push("WAYLAND_DISPLAY".to_string());
+            args.push(wayland_display);
+        }
+
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            args.push("--setenv".to_string());
+            args.push("XDG_RUNTIME_DIR".to_string());
+            args.push(runtime_dir);
+        }
+
+        let xauth_path = self.case_dir.join("overlay/upper/.Xauthority");
+        if xauth_path.exists() {
+            args.push("--setenv".to_string());
+            args.push("XAUTHORITY".to_string());
+            args.push("/root/.Xauthority".to_string());
+        }
+
+        // Disable internal nested namespace sandboxing (VOLT outer sandbox provides isolation)
+        args.push("--setenv".to_string());
+        args.push("MOZ_DISABLE_CONTENT_SANDBOX".to_string());
+        args.push("1".to_string());
+
+        args.push("--setenv".to_string());
+        args.push("MOZ_DISABLE_SANDBOX".to_string());
+        args.push("1".to_string());
+
+        args.push("--setenv".to_string());
+        args.push("NO_SANDBOX".to_string());
+        args.push("1".to_string());
+
+        args.push("--setenv".to_string());
+        args.push("NO_AT_SPI_BUS".to_string());
+        args.push("1".to_string());
+
+        // Unset desktop session manager to prevent ICE non-local connection rejections
+        args.push("--unsetenv".to_string());
+        args.push("SESSION_MANAGER".to_string());
+
         args.push("--chdir".to_string());
         args.push("/root".to_string());
 
-        // 9. Command to execute inside sandbox
+        // 10. Command to execute inside sandbox
         if let Some(cmd) = user_command {
             args.push("/bin/sh".to_string());
             args.push("-c".to_string());

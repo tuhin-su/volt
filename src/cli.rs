@@ -25,7 +25,10 @@ pub enum Commands {
     #[command(about = "Initialize a new evidence case directory with operational mode")]
     Init {
         #[arg(short, long, help = "Unique case identifier (e.g. IR-2026-0042)")]
-        case: String,
+        case: Option<String>,
+
+        #[arg(help = "Case identifier (positional, e.g. 'volt init IR-2026-0042')")]
+        case_pos: Option<String>,
 
         #[arg(short, long, default_value = "Investigator", help = "Name/ID of operator")]
         investigator: String,
@@ -49,7 +52,10 @@ pub enum Commands {
     #[command(about = "Start an isolated VOLT session with always-on capture")]
     Start {
         #[arg(short, long, help = "Case identifier to launch into")]
-        case: String,
+        case: Option<String>,
+
+        #[arg(help = "Case identifier (positional, e.g. 'volt start IR-2026-0042')")]
+        case_pos: Option<String>,
 
         #[arg(short, long, help = "Override hardware profile template")]
         profile: Option<String>,
@@ -61,10 +67,13 @@ pub enum Commands {
         alias = "attach"
     )]
     Join {
-        #[arg(help = "Active case identifier to attach to (e.g. IR-2026-0042)")]
-        case: String,
+        #[arg(short, long, help = "Active case identifier")]
+        case: Option<String>,
 
-        #[arg(short, long, help = "Optional command to run instead of interactive shell")]
+        #[arg(help = "Active case identifier (positional, e.g. 'volt join IR-2026-0042')")]
+        case_pos: Option<String>,
+
+        #[arg(long, help = "Optional command to run instead of interactive shell")]
         cmd: Option<String>,
 
         #[arg(long, help = "Custom label for this terminal stream")]
@@ -74,13 +83,19 @@ pub enum Commands {
     #[command(about = "Stop the active VOLT session and stop all capture daemons")]
     Stop {
         #[arg(short, long, help = "Case identifier")]
-        case: String,
+        case: Option<String>,
+
+        #[arg(help = "Case identifier (positional, e.g. 'volt stop IR-2026-0042')")]
+        case_pos: Option<String>,
     },
 
     #[command(about = "Seal the evidence vault and compute cryptographic hash chain")]
     Seal {
         #[arg(short, long, help = "Case identifier")]
-        case: String,
+        case: Option<String>,
+
+        #[arg(help = "Case identifier (positional, e.g. 'volt seal IR-2026-0042')")]
+        case_pos: Option<String>,
 
         #[arg(long, help = "Sign the evidence manifest with GPG")]
         sign: bool,
@@ -92,13 +107,19 @@ pub enum Commands {
     #[command(about = "Verify the integrity of a sealed case or exported bundle")]
     Verify {
         #[arg(help = "Path to case directory or .volt bundle")]
-        target: PathBuf,
+        target: Option<PathBuf>,
+
+        #[arg(short, long, help = "Target case or bundle (flag option)")]
+        case: Option<PathBuf>,
     },
 
     #[command(about = "Generate a court-admissible forensic & operational audit report")]
     Report {
         #[arg(short, long, help = "Case identifier to generate report for")]
-        case: String,
+        case: Option<String>,
+
+        #[arg(help = "Case identifier (positional, e.g. 'volt report IR-2026-0042')")]
+        case_pos: Option<String>,
 
         #[arg(short, long, default_value = "markdown", help = "Report format: markdown | html")]
         format: String,
@@ -111,12 +132,18 @@ pub enum Commands {
     Status {
         #[arg(short, long, help = "Optional specific case identifier")]
         case: Option<String>,
+
+        #[arg(help = "Optional case identifier (positional)")]
+        case_pos: Option<String>,
     },
 
     #[command(about = "Take an immediate on-demand screenshot in the active case")]
     Screenshot {
         #[arg(short, long, help = "Case identifier")]
-        case: String,
+        case: Option<String>,
+
+        #[arg(help = "Case identifier (positional, e.g. 'volt screenshot IR-2026-0042')")]
+        case_pos: Option<String>,
 
         #[arg(short, long, help = "Optional label/tag for the screenshot")]
         label: Option<String>,
@@ -125,7 +152,10 @@ pub enum Commands {
     #[command(about = "Export a sealed case into a compressed evidence bundle")]
     Export {
         #[arg(short, long, help = "Case identifier")]
-        case: String,
+        case: Option<String>,
+
+        #[arg(help = "Case identifier (positional, e.g. 'volt export IR-2026-0042')")]
+        case_pos: Option<String>,
 
         #[arg(short, long, default_value = "volt", help = "Format: volt | targz")]
         format: String,

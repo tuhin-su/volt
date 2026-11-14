@@ -201,6 +201,16 @@ impl HardwareProfile {
             ),
         )?;
 
+        // Write fake /etc/hosts (mapping localhost, spoofed hostname, and current host hostname)
+        let host_hostname = nix::unistd::gethostname()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "localhost".to_string());
+        let hosts_content = format!(
+            "127.0.0.1\tlocalhost {} {}\n::1\t\tlocalhost ip6-localhost ip6-loopback {} {}\n",
+            self.hostname, host_hostname, self.hostname, host_hostname
+        );
+        fs::write(etc.join("hosts"), hosts_content)?;
+
         // Write fake /proc/cpuinfo
         let mut cpuinfo = String::new();
         for i in 0..self.cpu_cores {

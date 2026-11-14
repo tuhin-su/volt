@@ -27,7 +27,7 @@ impl TcpdumpManager {
         let pcap_pattern = self.pcaps_dir.join("capture_%Y%m%d_%H%M%S.pcap");
         let pcap_str = pcap_pattern.to_string_lossy().to_string();
 
-        let child = Command::new("tcpdump")
+        let mut child = Command::new("tcpdump")
             .arg("-i")
             .arg("any")
             .arg("-U") // Packet-buffered output
@@ -37,10 +37,18 @@ impl TcpdumpManager {
             .arg("3600") // Rotate every hour if size not reached
             .arg("-w")
             .arg(pcap_str)
+            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
             .spawn()
             .with_context(|| "Failed to spawn background tcpdump capture process")?;
 
-        tracing::info!("Started always-on tcpdump (PID: {}) writing to {:?}", child.id(), self.pcaps_dir);
+        std::thread::sleep(Duration::from_millis(150));
+        if let Ok(Some(exit_status)) = child.try_wait() {
+            tracing::warn!("tcpdump exited ({}); live packet capture requires CAP_NET_RAW or running with sudo", exit_status);
+        } else {
+            tracing::info!("Started always-on tcpdump (PID: {}) writing to {:?}", child.id(), self.pcaps_dir);
+        }
+
         Ok(child)
     }
 

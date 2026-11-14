@@ -71,9 +71,14 @@ impl ReportGenerator {
                 let reader = BufReader::new(file);
                 for line in reader.lines().flatten() {
                     if let Ok(block) = serde_json::from_str::<crate::evidence::hashchain::ChainBlock>(&line) {
+                        let short_hash: String = if block.payload_hash.len() > 16 {
+                            format!("{}...", block.payload_hash.chars().take(16).collect::<String>())
+                        } else {
+                            block.payload_hash.clone()
+                        };
                         doc.push_str(&format!(
                             "| **{}** | `{}` | `{}` | `{}` |\n",
-                            block.index, block.timestamp, block.event_type, &block.payload_hash[0..16]
+                            block.index, block.timestamp, block.event_type, short_hash
                         ));
                     }
                 }

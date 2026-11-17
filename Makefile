@@ -59,8 +59,12 @@ install:
 	echo "✓ Successfully installed hardware profiles to $(DESTDIR)$(SHAREDIR)/profiles"; \
 	if command -v setcap >/dev/null 2>&1; then \
 		$(SUDO) setcap cap_net_raw,cap_net_admin+eip $(DESTDIR)$(BINDIR)/volt 2>/dev/null && \
-		echo "✓ Granted CAP_NET_RAW capabilities for raw network scanning (nmap -sS)" || \
-		echo "ℹ (Optional) Run 'sudo setcap cap_net_raw,cap_net_admin+eip $(DESTDIR)$(BINDIR)/volt' for rootless raw scans"; \
+		echo "✓ Granted CAP_NET_RAW capabilities to $(DESTDIR)$(BINDIR)/volt" || true; \
+		TCPDUMP_BIN=$$(command -v tcpdump 2>/dev/null || true); \
+		if [ -n "$$TCPDUMP_BIN" ] && [ -x "$$TCPDUMP_BIN" ]; then \
+			$(SUDO) setcap cap_net_raw,cap_net_admin+eip "$$TCPDUMP_BIN" 2>/dev/null && \
+			echo "✓ Granted CAP_NET_RAW to $$TCPDUMP_BIN (enables rootless always-on PCAP capture)" || true; \
+		fi; \
 	fi
 
 uninstall:

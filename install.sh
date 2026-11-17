@@ -85,14 +85,19 @@ fi
 $SUDO_CMD chmod -R 644 "${PROFILE_DIR}"/*.json 2>/dev/null || true
 $SUDO_CMD chmod 755 "${PROFILE_DIR}"
 
-# 5. Set network capabilities for raw scanning (nmap -sS)
-echo "  [3/4] Granting CAP_NET_RAW network capability for stealth scans..."
+# 5. Set network capabilities for raw scanning and PCAP capture
+echo "  [3/4] Granting CAP_NET_RAW network capabilities..."
 if command -v setcap >/dev/null 2>&1; then
     $SUDO_CMD setcap cap_net_raw,cap_net_admin+eip "${BIN_DIR}/volt" 2>/dev/null && \
-        echo "        ✓ CAP_NET_RAW granted successfully." || \
-        echo "        ℹ Notice: setcap failed (kernel may restrict capabilities in container)."
+        echo "        ✓ CAP_NET_RAW granted to ${BIN_DIR}/volt." || true
+
+    TCPDUMP_BIN="$(command -v tcpdump 2>/dev/null || true)"
+    if [ -n "$TCPDUMP_BIN" ] && [ -x "$TCPDUMP_BIN" ]; then
+        $SUDO_CMD setcap cap_net_raw,cap_net_admin+eip "$TCPDUMP_BIN" 2>/dev/null && \
+            echo "        ✓ CAP_NET_RAW granted to $TCPDUMP_BIN (enables rootless PCAP packet capture)." || true
+    fi
 else
-    echo "        ℹ Notice: 'setcap' not found. Raw scans may require running via sudo."
+    echo "        ℹ Notice: 'setcap' not found. Packet capture may require running via sudo."
 fi
 
 # 6. Verify installation

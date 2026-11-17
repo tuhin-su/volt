@@ -153,6 +153,24 @@ fn find_case_dir(config: &VoltConfig, case_name: &str) -> PathBuf {
         return in_config;
     }
 
+    // Check invoking user's home directory if running via sudo
+    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        if let Some(user_home) = volt::core::config::resolve_user_home(&sudo_user) {
+            let in_sudo_cases = user_home.join(".cases").join(case_name);
+            if in_sudo_cases.join("case.json").exists() {
+                return in_sudo_cases;
+            }
+            let in_sudo_local = user_home.join("cases").join(case_name);
+            if in_sudo_local.join("case.json").exists() {
+                return in_sudo_local;
+            }
+            let in_sudo_docs = user_home.join("Documents/cases").join(case_name);
+            if in_sudo_docs.join("case.json").exists() {
+                return in_sudo_docs;
+            }
+        }
+    }
+
     if let Ok(home) = std::env::var("HOME") {
         let in_home = PathBuf::from(&home).join(".cases").join(case_name);
         if in_home.join("case.json").exists() {

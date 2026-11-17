@@ -3,10 +3,27 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
-/// Expands leading `~` into the user's `$HOME` directory if present
+/// Resolve the home directory of a user by username
+pub fn resolve_user_home(username: &str) -> Option<PathBuf> {
+    if let Ok(Some(user)) = nix::unistd::User::from_name(username) {
+        return Some(user.dir);
+    }
+    let fallback = PathBuf::from("/home").join(username);
+    if fallback.exists() {
+        return Some(fallback);
+    }
+    None
+}
+
+/// Expands leading `~` into the user's `$HOME` directory if present (respecting SUDO_USER)
 pub fn expand_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
     let p = path.as_ref();
     if let Ok(stripped) = p.strip_prefix("~") {
+        if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            if let Some(user_home) = resolve_user_home(&sudo_user) {
+                return user_home.join(stripped);
+            }
+        }
         if let Ok(home) = std::env::var("HOME") {
             return PathBuf::from(home).join(stripped);
         }
@@ -14,10 +31,18 @@ pub fn expand_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
     p.to_path_buf()
 }
 
-/// Default global cases storage directory (~/.cases)
+/// Default global cases storage directory (~/.cases), respecting SUDO_USER
 pub fn default_case_dir() -> PathBuf {
     if let Ok(val) = std::env::var("VOLT_CASES_DIR") {
         expand_tilde(val)
+    } else if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        if let Some(user_home) = resolve_user_home(&sudo_user) {
+            user_home.join(".cases")
+        } else if let Ok(home) = std::env::var("HOME") {
+            PathBuf::from(home).join(".cases")
+        } else {
+            PathBuf::from("./cases")
+        }
     } else if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".cases")
     } else {

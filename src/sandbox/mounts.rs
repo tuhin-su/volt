@@ -19,11 +19,143 @@ impl SandboxMounts {
         let shim_bin_dir = case_dir.join("shims/bin");
         fs::create_dir_all(&shim_bin_dir)?;
 
-        // 1. Transparent sudo shim — user is already UID 0 inside sandbox
-        Self::write_executable_shim(
-            &shim_bin_dir.join("sudo"),
-            "#!/bin/sh\n# VOLT transparent sudo shim — user is already UID 0 inside sandbox\nexec \"$@\"\n",
-        )?;
+        // 1. Transparent privilege escalation shims (sudo, su, doas, pkexec)
+        let sudo_shim = r#"#!/bin/bash
+# VOLT Smart sudo shim — user is already UID 0 inside sandbox
+LOGIN_SHELL=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -i|--login)
+            LOGIN_SHELL=1
+            shift
+            ;;
+        -s|--shell)
+            shift
+            ;;
+        -u|--user|-g|--group|-p|--prompt)
+            shift 2
+            ;;
+        -E|--preserve-env|-H|--set-home|-S|--stdin|-b|--background|-n|--non-interactive|-v|--validate|-k|--reset-timestamp)
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [ $# -eq 0 ]; then
+    if [ $LOGIN_SHELL -eq 1 ]; then
+        exec /bin/bash -l
+    else
+        exec /bin/bash
+    fi
+else
+    exec "$@"
+fi
+"#;
+        Self::write_executable_shim(&shim_bin_dir.join("sudo"), sudo_shim)?;
+
+        let su_shim = r#"#!/bin/bash
+# VOLT su shim — user is already UID 0 inside sandbox
+LOGIN=0
+for arg in "$@"; do
+    case "$arg" in
+        -|--login|-l)
+            LOGIN=1
+            ;;
+    esac
+done
+
+if [ $LOGIN -eq 1 ]; then
+    exec /bin/bash -l
+else
+    exec /bin/bash
+fi
+"#;
+        Self::write_executable_shim(&shim_bin_dir.join("su"), su_shim)?;
+
+        let doas_shim = r#"#!/bin/bash
+# VOLT doas shim
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -u) shift 2 ;;
+        -s) exec /bin/bash ;;
+        --) shift; break ;;
+        -*) shift ;;
+        *) break ;;
+    esac
+done
+if [ $# -eq 0 ]; then
+    exec /bin/bash
+else
+    exec "$@"
+fi
+"#;
+        Self::write_executable_shim(&shim_bin_dir.join("doas"), doas_shim)?;
+
+        let pkexec_shim = r#"#!/bin/bash
+# VOLT pkexec shim
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --user) shift 2 ;;
+        --) shift; break ;;
+        -*) shift ;;
+        *) break ;;
+    esac
+done
+if [ $# -eq 0 ]; then
+    exec /bin/bash
+else
+    exec "$@"
+fi
+"#;
+        Self::write_executable_shim(&shim_bin_dir.join("pkexec"), pkexec_shim)?;
+
+        // Package manager guidance shims
+        let pkg_shim = r#"#!/bin/bash
+PKG=$(basename "$0")
+REAL_BIN=""
+for bin in "/usr/bin/$PKG" "/bin/$PKG"; do
+    if [ -x "$bin" ] && [ "$bin" != "$0" ]; then
+        REAL_BIN="$bin"
+        break
+    fi
+done
+if [ -z "$REAL_BIN" ]; then
+    NEW_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "/volt-shims" | paste -sd:)
+    REAL_BIN=$(PATH="$NEW_PATH" which "$PKG" 2>/dev/null)
+fi
+
+for arg in "$@"; do
+    case "$arg" in
+        install|update|upgrade|dist-upgrade|remove|purge|-S|-Syu|-R)
+            echo "⚡ [VOLT] Notice: VOLT forensic sandbox guarantees zero host mutation." >&2
+            echo "⚡ [VOLT] Host filesystem (/usr, /lib) is strictly read-only inside this session." >&2
+            echo "⚡ [VOLT] To install permanent host tools, run on your host: sudo $PKG $@" >&2
+            echo "⚡ [VOLT] For session-only tools, download portable binaries or run standalone scripts in /root or /tmp." >&2
+            echo "" >&2
+            ;;
+    esac
+done
+
+if [ -n "$REAL_BIN" ]; then
+    exec "$REAL_BIN" "$@"
+else
+    echo "$PKG: command not found" >&2
+    exit 127
+fi
+"#;
+        for pkg in &["apt", "apt-get", "pacman", "dnf", "yum", "apk"] {
+            Self::write_executable_shim(&shim_bin_dir.join(pkg), pkg_shim)?;
+        }
 
         // 2. Firefox and Gecko browser shims (disables internal nested namespaces that fail with EPERM in containers)
         let firefox_binaries = [

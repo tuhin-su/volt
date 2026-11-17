@@ -215,6 +215,16 @@ impl SandboxLauncher {
         args.push("--tmpfs".to_string());
         args.push("/tmp".to_string());
 
+        args.push("--dir".to_string());
+        args.push("/var/tmp".to_string());
+        args.push("--tmpfs".to_string());
+        args.push("/var/tmp".to_string());
+
+        args.push("--dir".to_string());
+        args.push("/run/lock".to_string());
+        args.push("--tmpfs".to_string());
+        args.push("/run/lock".to_string());
+
         // Forward host X11 and ICE unix domain sockets into sandbox /tmp
         args.push("--ro-bind-try".to_string());
         args.push("/tmp/.X11-unix".to_string());

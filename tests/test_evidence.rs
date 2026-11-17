@@ -122,6 +122,17 @@ fn test_sandbox_gui_and_fontconfig_mounts() {
     assert!(shim_ping.exists());
     let shim_masscan = tmp.path().join("shims/bin/masscan");
     assert!(shim_masscan.exists());
+
+    // Verify privilege escalation & package guidance shims
+    assert!(tmp.path().join("shims/bin/sudo").exists());
+    assert!(tmp.path().join("shims/bin/su").exists());
+    assert!(tmp.path().join("shims/bin/doas").exists());
+    assert!(tmp.path().join("shims/bin/pkexec").exists());
+    assert!(tmp.path().join("shims/bin/apt").exists());
+
+    // Verify scratch mounts
+    assert!(args.iter().any(|a| a == "/var/tmp"));
+    assert!(args.iter().any(|a| a == "/run/lock"));
 }
 
 #[test]
@@ -173,4 +184,12 @@ fn test_default_cases_dir_tilde_expansion() {
     let expanded = volt::core::config::expand_tilde("~/.cases/test-case");
     assert!(!expanded.to_string_lossy().starts_with("~"));
     assert!(expanded.to_string_lossy().ends_with(".cases/test-case"));
+}
+
+#[test]
+fn test_sudo_user_case_resolution() {
+    std::env::set_var("SUDO_USER", "testuser");
+    let path = volt::core::config::expand_tilde("~/.cases/test");
+    assert!(path.to_string_lossy().contains(".cases/test"));
+    std::env::remove_var("SUDO_USER");
 }

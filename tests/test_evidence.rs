@@ -110,6 +110,18 @@ fn test_sandbox_gui_and_fontconfig_mounts() {
     assert!(shim_brave.exists());
     let shim_code = tmp.path().join("shims/bin/code");
     assert!(shim_code.exists());
+
+    // Verify network tool shims (nmap, ping, masscan)
+    assert!(args.iter().any(|a| a == "VOLT_RAW_SOCKETS"));
+    let shim_nmap = tmp.path().join("shims/bin/nmap");
+    assert!(shim_nmap.exists());
+    let nmap_content = std::fs::read_to_string(&shim_nmap).unwrap();
+    assert!(nmap_content.contains("--unprivileged"));
+
+    let shim_ping = tmp.path().join("shims/bin/ping");
+    assert!(shim_ping.exists());
+    let shim_masscan = tmp.path().join("shims/bin/masscan");
+    assert!(shim_masscan.exists());
 }
 
 #[test]

@@ -81,6 +81,9 @@ impl SandboxMounts {
         let code_binaries = ["/usr/bin/code", "/usr/share/code/code", "/opt/visual-studio-code/code"];
         Self::write_browser_shim(&shim_bin_dir, "code", &code_binaries, false)?;
 
+        // 5. Intelligent network tool shims (nmap, ping, masscan)
+        Self::write_network_shims(&shim_bin_dir)?;
+
         // Prepare clean interactive root environment (.bashrc)
         let root_dir = case_dir.join("overlay/upper");
         fs::create_dir_all(&root_dir)?;
@@ -122,6 +125,8 @@ impl SandboxMounts {
              alias brave='brave-browser --no-sandbox --disable-dev-shm-usage'\n\
              alias brave-browser='brave-browser --no-sandbox --disable-dev-shm-usage'\n\
              alias code='code --no-sandbox'\n\
+             alias nmap='nmap'\n\
+             alias ping='ping'\n\
              export MOZ_DISABLE_CONTENT_SANDBOX=1\n\
              export MOZ_DISABLE_SANDBOX=1\n\
              export NO_SANDBOX=1\n\
@@ -178,6 +183,153 @@ impl SandboxMounts {
             )
         };
         Self::write_executable_shim(&dir.join(name), &content)
+    }
+
+    fn write_network_shims(dir: &Path) -> Result<()> {
+        // 1. Intelligent nmap shim
+        // In unprivileged user namespaces, raw sockets (SOCK_RAW / AF_PACKET) are denied by kernel.
+        // Automatically injects --unprivileged (TCP Connect scan), preventing crashes on tun0/eth.
+        // If user explicitly asks for -sS (SYN scan), converts to -sT with informative notice.
+        let nmap_shim = r#"#!/bin/bash
+# VOLT Application Shim: Intelligent unprivileged execution for nmap
+REAL_NMAP=""
+for bin in /usr/bin/nmap /usr/local/bin/nmap /bin/nmap; do
+    if [ -x "$bin" ] && [ "$bin" != "$0" ]; then
+        REAL_NMAP="$bin"
+        break
+    fi
+done
+
+if [ -z "$REAL_NMAP" ]; then
+    NEW_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "/volt-shims" | paste -sd:)
+    REAL_NMAP=$(PATH="$NEW_PATH" which nmap 2>/dev/null)
+fi
+
+if [ -z "$REAL_NMAP" ]; then
+    echo "nmap: command not found" >&2
+    exit 127
+fi
+
+# If raw sockets are available (running under sudo volt start or with CAP_NET_RAW)
+if [ "$VOLT_RAW_SOCKETS" = "1" ]; then
+    exec "$REAL_NMAP" "$@"
+fi
+
+# Check arguments
+HAS_PRIV_FLAG=0
+HAS_SYN_FLAG=0
+for arg in "$@"; do
+    case "$arg" in
+        --unprivileged|--privileged)
+            HAS_PRIV_FLAG=1
+            ;;
+        -sS)
+            HAS_SYN_FLAG=1
+            ;;
+    esac
+done
+
+if [ "$HAS_PRIV_FLAG" -eq 1 ]; then
+    exec "$REAL_NMAP" "$@"
+fi
+
+if [ "$HAS_SYN_FLAG" -eq 1 ]; then
+    echo "⚡ [VOLT] Notice: Raw sockets unavailable in unprivileged sandbox." >&2
+    echo "⚡ [VOLT] Converting SYN scan (-sS) to TCP Connect scan (-sT --unprivileged)." >&2
+    echo "⚡ [VOLT] (Tip: For raw packet SYN scanning, launch VOLT with: sudo volt start --case <CASE>)" >&2
+    NEW_ARGS=()
+    for arg in "$@"; do
+        if [ "$arg" = "-sS" ]; then
+            NEW_ARGS+=("-sT")
+        else
+            NEW_ARGS+=("$arg")
+        fi
+    done
+    exec "$REAL_NMAP" --unprivileged "${NEW_ARGS[@]}"
+fi
+
+exec "$REAL_NMAP" --unprivileged "$@"
+"#;
+        Self::write_executable_shim(&dir.join("nmap"), nmap_shim)?;
+
+        // 2. Intelligent ping shim
+        let ping_shim = r#"#!/bin/bash
+# VOLT Application Shim: ping
+REAL_PING=""
+for bin in /bin/ping /usr/bin/ping; do
+    if [ -x "$bin" ] && [ "$bin" != "$0" ]; then
+        REAL_PING="$bin"
+        break
+    fi
+done
+
+if [ -z "$REAL_PING" ]; then
+    echo "ping: command not found" >&2
+    exit 127
+fi
+
+if [ "$VOLT_RAW_SOCKETS" = "1" ]; then
+    exec "$REAL_PING" "$@"
+fi
+
+# Test if native ping works (e.g. ping_group_range allowed)
+OUTPUT=$("$REAL_PING" -c 1 -W 1 127.0.0.1 2>&1)
+if [ $? -eq 0 ]; then
+    exec "$REAL_PING" "$@"
+fi
+
+# In unprivileged containers, raw ICMP socket is denied by kernel without CAP_NET_RAW.
+# Extract target and use unprivileged nmap ping scan
+TARGET=""
+for arg in "$@"; do
+    case "$arg" in
+        -*) ;;
+        *) TARGET="$arg";;
+    esac
+done
+
+if [ -n "$TARGET" ]; then
+    echo "⚡ [VOLT] Notice: ICMP raw sockets require CAP_NET_RAW. Using unprivileged TCP/ICMP probe via nmap:" >&2
+    exec nmap -sn --unprivileged "$TARGET"
+else
+    exec "$REAL_PING" "$@"
+fi
+"#;
+        Self::write_executable_shim(&dir.join("ping"), ping_shim)?;
+
+        // 3. Informative masscan shim
+        let masscan_shim = r#"#!/bin/bash
+# VOLT Application Shim: masscan
+REAL_MASSCAN=""
+for bin in /usr/bin/masscan /usr/local/bin/masscan; do
+    if [ -x "$bin" ] && [ "$bin" != "$0" ]; then
+        REAL_MASSCAN="$bin"
+        break
+    fi
+done
+
+if [ -z "$REAL_MASSCAN" ]; then
+    NEW_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "/volt-shims" | paste -sd:)
+    REAL_MASSCAN=$(PATH="$NEW_PATH" which masscan 2>/dev/null)
+fi
+
+if [ -z "$REAL_MASSCAN" ]; then
+    echo "masscan: command not found" >&2
+    exit 127
+fi
+
+if [ "$VOLT_RAW_SOCKETS" = "1" ]; then
+    exec "$REAL_MASSCAN" "$@"
+fi
+
+echo "❌ [VOLT] Error: masscan requires raw packet sockets (CAP_NET_RAW) to craft custom IP packets." >&2
+echo "⚡ [VOLT] To use masscan, launch VOLT with: sudo volt start --case <CASE>" >&2
+echo "⚡ [VOLT] Or use nmap: nmap -p- --unprivileged <target>" >&2
+exit 1
+"#;
+        Self::write_executable_shim(&dir.join("masscan"), masscan_shim)?;
+
+        Ok(())
     }
 
     fn write_executable_shim(path: &Path, content: &str) -> Result<()> {

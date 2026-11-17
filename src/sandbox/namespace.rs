@@ -24,6 +24,23 @@ impl SandboxLauncher {
         args.push("--unshare-all".to_string());
         args.push("--share-net".to_string());
 
+        // Retain capabilities if running as root or privileged
+        let is_root = nix::unistd::geteuid().is_root();
+        let has_raw_socket = unsafe {
+            let fd = libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_RAW);
+            if fd >= 0 {
+                libc::close(fd);
+                true
+            } else {
+                false
+            }
+        };
+
+        if is_root {
+            args.push("--cap-add".to_string());
+            args.push("ALL".to_string());
+        }
+
         // 2. Map inside sandbox to root UID 0 / GID 0
         args.push("--uid".to_string());
         args.push("0".to_string());
@@ -323,6 +340,11 @@ impl SandboxLauncher {
         args.push("--setenv".to_string());
         args.push("NO_AT_SPI_BUS".to_string());
         args.push("1".to_string());
+
+        // Signal raw socket availability to sandboxed application shims
+        args.push("--setenv".to_string());
+        args.push("VOLT_RAW_SOCKETS".to_string());
+        args.push(if is_root || has_raw_socket { "1" } else { "0" }.to_string());
 
         // Unset desktop session manager to prevent ICE non-local connection rejections
         args.push("--unsetenv".to_string());

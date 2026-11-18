@@ -1,6 +1,9 @@
 # ⚡ VOLT — Volatile Observation & Logging Terminal
 ### *User Manual & Architectural Specification*
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org)
+
 > **A forensic-grade sandboxed execution environment for Cybersecurity Investigations, Red Teaming, Incident Response, and Malware Analysis.**  
 > *Features 5-layer kernel isolation, deceptive hardware spoofing, multi-terminal workflows, wire-speed packet capture, always-on session recording, and court-admissible cryptographic hash chains.*
 
@@ -539,4 +542,4 @@ disk_emergency_seal_pct = 95
 ---
 
 ## 📜 License
-*Proprietary & Open Forensic Standard — Maintained by the VOLT Security Core Team.*
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

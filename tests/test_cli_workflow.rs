@@ -169,3 +169,88 @@ fn test_cli_full_lifecycle() {
         }
     }
 }
+
+#[test]
+fn test_cli_shared_environment() {
+    let tmp = tempdir().unwrap();
+    let cases_dir = tmp.path().join("cases");
+    let config_file = tmp.path().join("volt.toml");
+
+    let config_content = format!(
+        "cases_dir = \"{}\"\ndefault_hardware_profile = \"laptop-dell\"\nscreenshot_interval_secs = 30\npcap_rotate_mb = 100\ndisk_warning_pct = 80\ndisk_emergency_seal_pct = 95\n",
+        cases_dir.display()
+    );
+    fs::write(&config_file, config_content).unwrap();
+
+    let volt_bin = get_volt_binary();
+    if !volt_bin.exists() {
+        return;
+    }
+
+    let case_name = "TEST-ENV-CASE-001";
+
+    // 1. volt init
+    let status = Command::new(&volt_bin)
+        .arg("--config")
+        .arg(&config_file)
+        .arg("init")
+        .arg("--case")
+        .arg(case_name)
+        .status()
+        .expect("Failed to run volt init");
+    assert!(status.success());
+
+    // 2. volt env --set
+    let status = Command::new(&volt_bin)
+        .arg("--config")
+        .arg(&config_file)
+        .arg("env")
+        .arg("--case")
+        .arg(case_name)
+        .arg("--set")
+        .arg("TARGET_IP=192.168.1.50")
+        .status()
+        .expect("Failed to run volt env --set");
+    assert!(status.success());
+
+    // 3. volt env --get
+    let output = Command::new(&volt_bin)
+        .arg("--config")
+        .arg(&config_file)
+        .arg("env")
+        .arg("--case")
+        .arg(case_name)
+        .arg("--get")
+        .arg("TARGET_IP")
+        .output()
+        .expect("Failed to run volt env --get");
+    assert!(output.status.success());
+    let val = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(val.trim(), "192.168.1.50");
+
+    // 4. volt env --unset
+    let status = Command::new(&volt_bin)
+        .arg("--config")
+        .arg(&config_file)
+        .arg("env")
+        .arg("--case")
+        .arg(case_name)
+        .arg("--unset")
+        .arg("TARGET_IP")
+        .status()
+        .expect("Failed to run volt env --unset");
+    assert!(status.success());
+
+    // 5. volt env --get (should fail now)
+    let status = Command::new(&volt_bin)
+        .arg("--config")
+        .arg(&config_file)
+        .arg("env")
+        .arg("--case")
+        .arg(case_name)
+        .arg("--get")
+        .arg("TARGET_IP")
+        .status()
+        .expect("Failed to run volt env --get");
+    assert!(!status.success());
+}

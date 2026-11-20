@@ -34,9 +34,15 @@ fn test_hashchain_tamper_detection() {
     let chain_path = tmp.path().join("chain.jsonl");
 
     let chain = HashChain::open_or_init(&chain_path, "genesis_seed_123").unwrap();
-    chain.append("CMD", &sha256_bytes(b"nmap -sS 10.0.0.1")).unwrap();
-    chain.append("PCAP", &sha256_bytes(b"packet_data_chunk")).unwrap();
-    chain.append("SCREENSHOT", &sha256_bytes(b"screenshot_png_bytes")).unwrap();
+    chain
+        .append("CMD", &sha256_bytes(b"nmap -sS 10.0.0.1"))
+        .unwrap();
+    chain
+        .append("PCAP", &sha256_bytes(b"packet_data_chunk"))
+        .unwrap();
+    chain
+        .append("SCREENSHOT", &sha256_bytes(b"screenshot_png_bytes"))
+        .unwrap();
 
     // Verify intact chain
     let count = HashChain::verify_file(&chain_path).unwrap();
@@ -45,12 +51,18 @@ fn test_hashchain_tamper_detection() {
     // Tamper with chain file (modify an event type or hash byte)
     let content = std::fs::read_to_string(&chain_path).unwrap();
     let tampered = content.replacen("\"CMD\"", "\"TAMPERED\"", 1);
-    assert_ne!(content, tampered, "String replacement must have altered content");
+    assert_ne!(
+        content, tampered,
+        "String replacement must have altered content"
+    );
     std::fs::write(&chain_path, tampered).unwrap();
 
     // Verification MUST FAIL
     let result = HashChain::verify_file(&chain_path);
-    assert!(result.is_err(), "Verification should have caught tampering!");
+    assert!(
+        result.is_err(),
+        "Verification should have caught tampering!"
+    );
 }
 
 #[test]
@@ -61,7 +73,8 @@ fn test_hardware_spoof_tree() {
 
     profile.write_spoof_tree(&spoof_dir).unwrap();
 
-    let product_name = std::fs::read_to_string(spoof_dir.join("sys/class/dmi/id/product_name")).unwrap();
+    let product_name =
+        std::fs::read_to_string(spoof_dir.join("sys/class/dmi/id/product_name")).unwrap();
     assert_eq!(product_name.trim(), "Latitude 5520");
 
     let hostname = std::fs::read_to_string(spoof_dir.join("etc/hostname")).unwrap();
@@ -130,6 +143,11 @@ fn test_sandbox_gui_and_fontconfig_mounts() {
     assert!(tmp.path().join("shims/bin/pkexec").exists());
     assert!(tmp.path().join("shims/bin/apt").exists());
 
+    // Verify environment sharing shims and storage
+    assert!(tmp.path().join("shims/bin/volt-env").exists());
+    assert!(tmp.path().join("shims/bin/env-share").exists());
+    assert!(tmp.path().join("overlay/upper/.volt_env").exists());
+
     // Verify scratch mounts
     assert!(args.iter().any(|a| a == "/var/tmp"));
     assert!(args.iter().any(|a| a == "/run/lock"));
@@ -153,10 +171,15 @@ fn test_report_with_short_payload_hashes() {
 
     let vault = EvidenceVault::open(&case).unwrap();
     // Append events with varying payload lengths, including short ones (< 16 chars)
-    vault.record_event("SESSION_START", "full_64_character_sha256_genesis_hash_placeholder_1234567890abcdef").unwrap();
+    vault
+        .record_event(
+            "SESSION_START",
+            "full_64_character_sha256_genesis_hash_placeholder_1234567890abcdef",
+        )
+        .unwrap();
     vault.record_event("SESSION_END", "exit_code:1").unwrap(); // length 11 — previously panicked!
-    vault.record_event("CUSTOM_SHORT", "abc").unwrap();        // length 3
-    vault.record_event("EMPTY_EVENT", "").unwrap();             // length 0
+    vault.record_event("CUSTOM_SHORT", "abc").unwrap(); // length 3
+    vault.record_event("EMPTY_EVENT", "").unwrap(); // length 0
 
     let tip = vault.chain.current_tip();
     let manifest = volt::evidence::EvidenceManifest::build(

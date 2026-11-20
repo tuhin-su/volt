@@ -98,8 +98,8 @@ impl Case {
         }
         let content = fs::read_to_string(&meta_file)
             .with_context(|| format!("Failed to read {:?}", meta_file))?;
-        let metadata: CaseMetadata = serde_json::from_str(&content)
-            .with_context(|| "Failed to parse case.json")?;
+        let metadata: CaseMetadata =
+            serde_json::from_str(&content).with_context(|| "Failed to parse case.json")?;
 
         Ok(Self {
             dir: case_dir,
@@ -139,5 +139,9 @@ impl Case {
 
     pub fn overlay_work_dir(&self) -> PathBuf {
         self.dir.join("overlay/work")
+    }
+
+    pub fn shared_env_file(&self) -> PathBuf {
+        self.dir.join("overlay/upper/.volt_env")
     }
 }

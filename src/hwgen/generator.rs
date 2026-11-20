@@ -1,7 +1,7 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::{Context, Result};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +32,12 @@ impl HardwareProfile {
     /// Create standard VirtualBox template
     pub fn virtualbox() -> Self {
         let rand_hex = Uuid::new_v4().simple().to_string();
-        let mac = format!("08:00:27:{}:{}:{}", &rand_hex[0..2], &rand_hex[2..4], &rand_hex[4..6]);
+        let mac = format!(
+            "08:00:27:{}:{}:{}",
+            &rand_hex[0..2],
+            &rand_hex[2..4],
+            &rand_hex[4..6]
+        );
         Self {
             name: "vm-virtualbox".to_string(),
             hostname: format!("VBOX-{}", &rand_hex[0..6].to_uppercase()),
@@ -60,7 +65,12 @@ impl HardwareProfile {
     /// Create standard Dell Latitude template
     pub fn dell_latitude() -> Self {
         let rand_hex = Uuid::new_v4().simple().to_string();
-        let mac = format!("b8:85:84:{}:{}:{}", &rand_hex[0..2], &rand_hex[2..4], &rand_hex[4..6]);
+        let mac = format!(
+            "b8:85:84:{}:{}:{}",
+            &rand_hex[0..2],
+            &rand_hex[2..4],
+            &rand_hex[4..6]
+        );
         Self {
             name: "laptop-dell".to_string(),
             hostname: format!("DESKTOP-{}", &rand_hex[0..7].to_uppercase()),
@@ -88,7 +98,12 @@ impl HardwareProfile {
     /// Create standard HP EliteDesk template
     pub fn hp_elitedesk() -> Self {
         let rand_hex = Uuid::new_v4().simple().to_string();
-        let mac = format!("9c:b6:54:{}:{}:{}", &rand_hex[0..2], &rand_hex[2..4], &rand_hex[4..6]);
+        let mac = format!(
+            "9c:b6:54:{}:{}:{}",
+            &rand_hex[0..2],
+            &rand_hex[2..4],
+            &rand_hex[4..6]
+        );
         Self {
             name: "desktop-hp".to_string(),
             hostname: format!("HP-DESK-{}", &rand_hex[0..6].to_uppercase()),
@@ -177,18 +192,48 @@ impl HardwareProfile {
         fs::create_dir_all(&proc)?;
 
         // Write sysfs DMI files
-        fs::write(sys_dmi.join("product_name"), format!("{}\n", self.product_name))?;
-        fs::write(sys_dmi.join("product_version"), format!("{}\n", self.product_version))?;
-        fs::write(sys_dmi.join("product_serial"), format!("{}\n", self.product_serial))?;
-        fs::write(sys_dmi.join("product_uuid"), format!("{}\n", self.product_uuid))?;
-        fs::write(sys_dmi.join("board_vendor"), format!("{}\n", self.board_vendor))?;
+        fs::write(
+            sys_dmi.join("product_name"),
+            format!("{}\n", self.product_name),
+        )?;
+        fs::write(
+            sys_dmi.join("product_version"),
+            format!("{}\n", self.product_version),
+        )?;
+        fs::write(
+            sys_dmi.join("product_serial"),
+            format!("{}\n", self.product_serial),
+        )?;
+        fs::write(
+            sys_dmi.join("product_uuid"),
+            format!("{}\n", self.product_uuid),
+        )?;
+        fs::write(
+            sys_dmi.join("board_vendor"),
+            format!("{}\n", self.board_vendor),
+        )?;
         fs::write(sys_dmi.join("board_name"), format!("{}\n", self.board_name))?;
-        fs::write(sys_dmi.join("board_version"), format!("{}\n", self.board_version))?;
-        fs::write(sys_dmi.join("board_serial"), format!("{}\n", self.board_serial))?;
-        fs::write(sys_dmi.join("bios_vendor"), format!("{}\n", self.bios_vendor))?;
-        fs::write(sys_dmi.join("bios_version"), format!("{}\n", self.bios_version))?;
+        fs::write(
+            sys_dmi.join("board_version"),
+            format!("{}\n", self.board_version),
+        )?;
+        fs::write(
+            sys_dmi.join("board_serial"),
+            format!("{}\n", self.board_serial),
+        )?;
+        fs::write(
+            sys_dmi.join("bios_vendor"),
+            format!("{}\n", self.bios_vendor),
+        )?;
+        fs::write(
+            sys_dmi.join("bios_version"),
+            format!("{}\n", self.bios_version),
+        )?;
         fs::write(sys_dmi.join("bios_date"), format!("{}\n", self.bios_date))?;
-        fs::write(sys_dmi.join("chassis_type"), format!("{}\n", self.chassis_type))?;
+        fs::write(
+            sys_dmi.join("chassis_type"),
+            format!("{}\n", self.chassis_type),
+        )?;
 
         // Write etc files
         fs::write(etc.join("hostname"), format!("{}\n", self.hostname))?;

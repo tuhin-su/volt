@@ -1,8 +1,8 @@
+use crate::utils::timestamps::now_rfc3339;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use crate::utils::timestamps::now_rfc3339;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
@@ -20,13 +20,7 @@ pub struct SessionInfo {
 }
 
 impl SessionInfo {
-    pub fn new(
-        case_name: &str,
-        session_id: &str,
-        pid: u32,
-        hw_profile: &str,
-        mode: &str,
-    ) -> Self {
+    pub fn new(case_name: &str, session_id: &str, pid: u32, hw_profile: &str, mode: &str) -> Self {
         Self {
             case_name: case_name.to_string(),
             session_id: session_id.to_string(),

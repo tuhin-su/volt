@@ -50,7 +50,8 @@ impl HashChain {
             let timestamp = now_rfc3339();
             let genesis_hash = sha256_bytes(genesis_seed.as_bytes());
             let prev_hash = "0".repeat(64);
-            let block_hash = sha256_bytes(format!("0:{}:{}:{}", timestamp, "GENESIS", genesis_hash).as_bytes());
+            let block_hash =
+                sha256_bytes(format!("0:{}:{}:{}", timestamp, "GENESIS", genesis_hash).as_bytes());
 
             let genesis = ChainBlock {
                 index: 0,
@@ -83,7 +84,10 @@ impl HashChain {
         let timestamp = now_rfc3339();
         let prev_hash = prev.block_hash.clone();
 
-        let raw = format!("{}:{}:{}:{}:{}", index, timestamp, event_type, payload_hash, prev_hash);
+        let raw = format!(
+            "{}:{}:{}:{}:{}",
+            index, timestamp, event_type, payload_hash, prev_hash
+        );
         let block_hash = sha256_bytes(raw.as_bytes());
 
         let new_block = ChainBlock {
@@ -95,7 +99,10 @@ impl HashChain {
             block_hash,
         };
 
-        let mut file = OpenOptions::new().create(true).append(true).open(&self.file_path)?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.file_path)?;
         let json = serde_json::to_string(&new_block)?;
         writeln!(file, "{}", json)?;
         file.sync_all()?; // Immediate fsync for evidence integrity
@@ -151,7 +158,8 @@ impl HashChain {
             } else if block.index == 0 {
                 // Genesis block
                 let expected_genesis = sha256_bytes(
-                    format!("0:{}:{}:{}", block.timestamp, "GENESIS", block.payload_hash).as_bytes()
+                    format!("0:{}:{}:{}", block.timestamp, "GENESIS", block.payload_hash)
+                        .as_bytes(),
                 );
                 if block.block_hash != expected_genesis {
                     bail!("Corrupted Genesis block hash at line {}", line_idx + 1);
@@ -162,7 +170,11 @@ impl HashChain {
             if block.index > 0 {
                 let raw = format!(
                     "{}:{}:{}:{}:{}",
-                    block.index, block.timestamp, block.event_type, block.payload_hash, block.prev_hash
+                    block.index,
+                    block.timestamp,
+                    block.event_type,
+                    block.payload_hash,
+                    block.prev_hash
                 );
                 let computed = sha256_bytes(raw.as_bytes());
                 if computed != block.block_hash {

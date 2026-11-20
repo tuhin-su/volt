@@ -1,10 +1,10 @@
+use crate::utils::crypto::sha256_file;
+use crate::utils::timestamps::{now_filename_safe, now_rfc3339};
 use anyhow::{Context, Result};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use crate::utils::crypto::sha256_file;
-use crate::utils::timestamps::{now_filename_safe, now_rfc3339};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScreenshotRecord {
@@ -59,7 +59,13 @@ impl ScreenshotEngine {
 
         if !captured || !out_path.exists() {
             // Headless / server fallback
-            std::fs::write(&out_path, format!("VOLT Headless Capture - {}\nDisplay server unavailable\n", now_rfc3339()))?;
+            std::fs::write(
+                &out_path,
+                format!(
+                    "VOLT Headless Capture - {}\nDisplay server unavailable\n",
+                    now_rfc3339()
+                ),
+            )?;
         }
 
         let sha256 = sha256_file(&out_path)

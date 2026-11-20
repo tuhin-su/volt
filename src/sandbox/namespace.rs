@@ -17,35 +17,41 @@ impl SandboxLauncher {
     }
 
     /// Build the bwrap command argument list with universal support for any Linux OS and Desktop Environment
-    pub fn build_bwrap_args(&self, mounts: &SandboxMounts, user_command: Option<&str>) -> Vec<String> {
+    pub fn build_bwrap_args(
+        &self,
+        mounts: &SandboxMounts,
+        user_command: Option<&str>,
+    ) -> Vec<String> {
         let mut args: Vec<String> = Vec::new();
-
-        // 1. Unshare all namespaces EXCEPT network (retains host network for capture & tools)
-        args.push("--unshare-all".to_string());
-        args.push("--share-net".to_string());
 
         // Retain capabilities if running as root or privileged
         let is_root = nix::unistd::geteuid().is_root();
-        let has_raw_socket = unsafe {
-            let fd = libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_RAW);
-            if fd >= 0 {
-                libc::close(fd);
-                true
-            } else {
-                false
-            }
-        };
 
         if is_root {
+            // When running as root (e.g. sudo volt start), do NOT unshare the user namespace.
+            // In the Linux kernel, unsharing the user namespace while sharing the host network namespace
+            // creates a child user namespace that forfeits CAP_NET_RAW / CAP_NET_ADMIN over the host network stack.
+            // This causes raw socket operations (socket(AF_PACKET, SOCK_RAW), socket(AF_INET, SOCK_RAW))
+            // like nmap SYN/UDP scans, masscan, and hping3 to fail with EPERM (Error 1: Operation not permitted).
+            // Keeping the root process in the initial user namespace (init_user_ns) retains all network
+            // capabilities (--cap-add ALL) over the host network namespace while still isolating PID,
+            // IPC, UTS, and filesystem mounts.
+            args.push("--unshare-pid".to_string());
+            args.push("--unshare-ipc".to_string());
+            args.push("--unshare-uts".to_string());
+            args.push("--unshare-cgroup-try".to_string());
             args.push("--cap-add".to_string());
             args.push("ALL".to_string());
+        } else {
+            // Unprivileged rootless sandbox: unshare all namespaces including user namespace,
+            // mapping the user to UID 0 / GID 0 inside the sandbox.
+            args.push("--unshare-all".to_string());
+            args.push("--share-net".to_string());
+            args.push("--uid".to_string());
+            args.push("0".to_string());
+            args.push("--gid".to_string());
+            args.push("0".to_string());
         }
-
-        // 2. Map inside sandbox to root UID 0 / GID 0
-        args.push("--uid".to_string());
-        args.push("0".to_string());
-        args.push("--gid".to_string());
-        args.push("0".to_string());
 
         // 3. Fake hostname from hardware profile
         args.push("--hostname".to_string());
@@ -354,7 +360,7 @@ impl SandboxLauncher {
         // Signal raw socket availability to sandboxed application shims
         args.push("--setenv".to_string());
         args.push("VOLT_RAW_SOCKETS".to_string());
-        args.push(if is_root || has_raw_socket { "1" } else { "0" }.to_string());
+        args.push(if is_root { "1" } else { "0" }.to_string());
 
         // Unset desktop session manager to prevent ICE non-local connection rejections
         args.push("--unsetenv".to_string());

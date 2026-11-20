@@ -30,13 +30,28 @@ pub enum Commands {
         #[arg(help = "Case identifier (positional, e.g. 'volt init IR-2026-0042')")]
         case_pos: Option<String>,
 
-        #[arg(short, long, default_value = "Investigator", help = "Name/ID of operator")]
+        #[arg(
+            short,
+            long,
+            default_value = "Investigator",
+            help = "Name/ID of operator"
+        )]
         investigator: String,
 
-        #[arg(short, long, default_value = "vm-virtualbox", help = "Hardware profile: vm-virtualbox | laptop-dell | desktop-hp")]
+        #[arg(
+            short,
+            long,
+            default_value = "vm-virtualbox",
+            help = "Hardware profile: vm-virtualbox | laptop-dell | desktop-hp"
+        )]
         profile: String,
 
-        #[arg(short, long, default_value = "forensics", help = "Operation mode: forensics | red-team | blue-team | malware")]
+        #[arg(
+            short,
+            long,
+            default_value = "forensics",
+            help = "Operation mode: forensics | red-team | blue-team | malware"
+        )]
         mode: String,
 
         #[arg(long, help = "Law enforcement / Security Agency name")]
@@ -121,7 +136,12 @@ pub enum Commands {
         #[arg(help = "Case identifier (positional, e.g. 'volt report IR-2026-0042')")]
         case_pos: Option<String>,
 
-        #[arg(short, long, default_value = "markdown", help = "Report format: markdown | html")]
+        #[arg(
+            short,
+            long,
+            default_value = "markdown",
+            help = "Report format: markdown | html"
+        )]
         format: String,
 
         #[arg(short, long, help = "Custom output path for report")]
@@ -162,5 +182,41 @@ pub enum Commands {
 
         #[arg(short, long, help = "Output destination file/directory")]
         output: Option<PathBuf>,
+    },
+
+    #[command(
+        about = "Manage and inspect shared environment variables across terminal sessions",
+        alias = "environment"
+    )]
+    Env {
+        #[arg(short, long, help = "Case identifier")]
+        case: Option<String>,
+
+        #[arg(help = "Case identifier (positional, e.g. 'volt env IR-2026-0042')")]
+        case_pos: Option<String>,
+
+        #[arg(
+            long,
+            help = "Set a shared variable across all shells (e.g. --set KEY=VALUE)"
+        )]
+        set: Option<String>,
+
+        #[arg(long, help = "Get the value of a shared variable (e.g. --get KEY)")]
+        get: Option<String>,
+
+        #[arg(
+            long,
+            help = "Unset a shared variable across all shells (e.g. --unset KEY)"
+        )]
+        unset: Option<String>,
+
+        #[arg(long, help = "Clear all shared environment variables")]
+        clear: bool,
+
+        #[arg(long, help = "Output variables in JSON format")]
+        json: bool,
+
+        #[arg(long, help = "Output variables in shell export format")]
+        export: bool,
     },
 }

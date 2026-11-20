@@ -35,11 +35,7 @@ impl PtyRecorder {
     }
 
     /// Spawn a command inside a pseudo-terminal while capturing all I/O
-    pub fn run_session(
-        &self,
-        command_args: &[String],
-        vault: Arc<EvidenceVault>,
-    ) -> Result<i32> {
+    pub fn run_session(&self, command_args: &[String], vault: Arc<EvidenceVault>) -> Result<i32> {
         // Query caller's terminal window size so child PTY has matching columns/rows
         let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
         let has_ws = unsafe { libc::ioctl(libc::STDIN_FILENO, libc::TIOCGWINSZ, &mut ws) } == 0;

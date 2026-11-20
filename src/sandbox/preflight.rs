@@ -9,7 +9,10 @@ impl Preflight {
     pub fn check_safety(case_dir: &Path) -> Result<()> {
         // 1. Verify case directory is writable
         if !case_dir.exists() {
-            bail!("Preflight failed: Case directory {:?} does not exist", case_dir);
+            bail!(
+                "Preflight failed: Case directory {:?} does not exist",
+                case_dir
+            );
         }
 
         let test_write = case_dir.join(".preflight_test");

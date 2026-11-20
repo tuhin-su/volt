@@ -95,9 +95,9 @@ async fn main() -> Result<()> {
             handle_seal(&config, &case_name, sign, gpg_key)?;
         }
         Commands::Verify { target, case } => {
-            let target_str = target
-                .or(case)
-                .ok_or_else(|| anyhow::anyhow!("Missing target case directory or .volt bundle to verify."))?;
+            let target_str = target.or(case).ok_or_else(|| {
+                anyhow::anyhow!("Missing target case directory or .volt bundle to verify.")
+            })?;
             handle_verify(&config, &target_str)?;
         }
         Commands::Report {
@@ -129,6 +129,28 @@ async fn main() -> Result<()> {
         } => {
             let case_name = resolve_case(case, case_pos)?;
             handle_export(&config, &case_name, &format, output)?;
+        }
+        Commands::Env {
+            case,
+            case_pos,
+            set,
+            get,
+            unset,
+            clear,
+            json,
+            export,
+        } => {
+            let case_name = resolve_case(case, case_pos)?;
+            handle_env(
+                &config,
+                &case_name,
+                set.as_deref(),
+                get.as_deref(),
+                unset.as_deref(),
+                clear,
+                json,
+                export,
+            )?;
         }
     }
 
@@ -235,8 +257,14 @@ fn handle_init(
     println!("⚡ VOLT Case Initialized Successfully!");
     println!("  Case ID:          {}", case.metadata.case_name);
     println!("  Investigator:     {}", case.metadata.investigator);
-    println!("  Operation Mode:   {}", case.metadata.operation_mode.to_uppercase());
-    println!("  Hardware Profile: {} ({})", profile.name, profile.product_name);
+    println!(
+        "  Operation Mode:   {}",
+        case.metadata.operation_mode.to_uppercase()
+    );
+    println!(
+        "  Hardware Profile: {} ({})",
+        profile.name, profile.product_name
+    );
     if let Some(ref agency) = case.metadata.agency {
         println!("  Agency/Dept:      {}", agency);
     }
@@ -251,12 +279,19 @@ fn handle_init(
     Ok(())
 }
 
-async fn handle_start(config: &VoltConfig, case_name: &str, profile_override: Option<String>) -> Result<()> {
+async fn handle_start(
+    config: &VoltConfig,
+    case_name: &str,
+    profile_override: Option<String>,
+) -> Result<()> {
     let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
 
     if case.metadata.status == CaseStatus::Sealed {
-        anyhow::bail!("Case '{}' is SEALED. You cannot reopen a sealed evidence case.", case_name);
+        anyhow::bail!(
+            "Case '{}' is SEALED. You cannot reopen a sealed evidence case.",
+            case_name
+        );
     }
 
     // 1. Preflight safety assertion
@@ -320,10 +355,16 @@ async fn handle_start(config: &VoltConfig, case_name: &str, profile_override: Op
 
     println!("⚡ VOLT Sandbox Session Active");
     println!("  Case:         {}", case_name);
-    println!("  Mode:         {}", case.metadata.operation_mode.to_uppercase());
+    println!(
+        "  Mode:         {}",
+        case.metadata.operation_mode.to_uppercase()
+    );
     println!("  Identity:     {} ({})", profile.name, profile.hostname);
     println!("  Recording:    EVERYTHING (Terminal I/O + PCAP + Screenshots + Hash Chain)");
-    println!("  Multi-Term:   Open other terminals and run: volt exec --case {}", case_name);
+    println!(
+        "  Multi-Term:   Open other terminals and run: volt exec --case {}",
+        case_name
+    );
     println!("  Exit:         Type 'exit' to close primary session\n");
 
     // 8. Build bubblewrap command and launch inside PTY recorder
@@ -369,7 +410,12 @@ async fn handle_start(config: &VoltConfig, case_name: &str, profile_override: Op
     Ok(())
 }
 
-fn handle_exec(config: &VoltConfig, case_name: &str, cmd: Option<&str>, label: Option<&str>) -> Result<()> {
+fn handle_exec(
+    config: &VoltConfig,
+    case_name: &str,
+    cmd: Option<&str>,
+    label: Option<&str>,
+) -> Result<()> {
     let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
     let session_file = SessionInfo::session_file(&case_dir);
@@ -387,14 +433,20 @@ fn handle_exec(config: &VoltConfig, case_name: &str, cmd: Option<&str>, label: O
     let term_id = format!("{}_{}", term_tag, uuid::Uuid::new_v4().simple());
 
     let vault = Arc::new(EvidenceVault::open(&case)?);
-    let attach_hash = vault.record_event("TERMINAL_ATTACH", &format!("{}:pid:{}", term_id, session_info.pid))?;
+    let attach_hash = vault.record_event(
+        "TERMINAL_ATTACH",
+        &format!("{}:pid:{}", term_id, session_info.pid),
+    )?;
     tracing::info!("Terminal {} attached: {}", term_id, attach_hash);
 
     println!("⚡ VOLT Terminal Attached");
     println!("  Case:         {}", case_name);
     println!("  Terminal ID:  {}", term_id);
     println!("  Master PID:   {}", session_info.pid);
-    println!("  Recording to: evidence/terminal_stream_{}.jsonl\n", term_id);
+    println!(
+        "  Recording to: evidence/terminal_stream_{}.jsonl\n",
+        term_id
+    );
 
     // Load hardware profile & mounts for secondary terminal
     let profile = HardwareProfile::load_or_preset(&session_info.hardware_profile)?;
@@ -405,7 +457,9 @@ fn handle_exec(config: &VoltConfig, case_name: &str, cmd: Option<&str>, label: O
     let mut full_command = vec!["bwrap".to_string()];
     full_command.extend(bwrap_args);
 
-    let term_log = case.evidence_dir().join(format!("terminal_stream_{}.jsonl", term_id));
+    let term_log = case
+        .evidence_dir()
+        .join(format!("terminal_stream_{}.jsonl", term_id));
     let pty_recorder = PtyRecorder::new(&term_log);
 
     let exit_code = match pty_recorder.run_session(&full_command, vault.clone()) {
@@ -420,10 +474,16 @@ fn handle_exec(config: &VoltConfig, case_name: &str, cmd: Option<&str>, label: O
         }
     };
 
-    let detach_hash = vault.record_event("TERMINAL_DETACH", &format!("{}:code:{}", term_id, exit_code))?;
+    let detach_hash = vault.record_event(
+        "TERMINAL_DETACH",
+        &format!("{}:code:{}", term_id, exit_code),
+    )?;
     tracing::info!("Terminal {} detached: {}", term_id, detach_hash);
 
-    println!("\n⚡ Sub-terminal [{}] closed (exit code: {})", term_id, exit_code);
+    println!(
+        "\n⚡ Sub-terminal [{}] closed (exit code: {})",
+        term_id, exit_code
+    );
     Ok(())
 }
 
@@ -453,7 +513,12 @@ fn handle_stop(config: &VoltConfig, case_name: &str) -> Result<()> {
     Ok(())
 }
 
-fn handle_seal(config: &VoltConfig, case_name: &str, _sign: bool, _gpg_key: Option<String>) -> Result<()> {
+fn handle_seal(
+    config: &VoltConfig,
+    case_name: &str,
+    _sign: bool,
+    _gpg_key: Option<String>,
+) -> Result<()> {
     let case_dir = find_case_dir(config, case_name);
     let mut case = Case::open(&case_dir)?;
 
@@ -470,13 +535,21 @@ fn handle_seal(config: &VoltConfig, case_name: &str, _sign: bool, _gpg_key: Opti
     println!("  Total Artifacts: {}", manifest.total_artifacts);
     println!("  Total Size:      {} bytes", manifest.total_bytes);
     println!("  Root Tip Hash:   {}", manifest.chain_tip_hash);
-    println!("  Manifest File:   {}/evidence_manifest.json", case.dir.display());
+    println!(
+        "  Manifest File:   {}/evidence_manifest.json",
+        case.dir.display()
+    );
     println!("  Audit Report:    {}", report_path.display());
 
     Ok(())
 }
 
-fn handle_report(config: &VoltConfig, case_name: &str, format: &str, output: Option<PathBuf>) -> Result<()> {
+fn handle_report(
+    config: &VoltConfig,
+    case_name: &str,
+    format: &str,
+    output: Option<PathBuf>,
+) -> Result<()> {
     let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
 
@@ -500,7 +573,11 @@ fn handle_report(config: &VoltConfig, case_name: &str, format: &str, output: Opt
     let md_report = ReportGenerator::generate_markdown(&case, &manifest)?;
 
     let out_path = output.unwrap_or_else(|| {
-        case.reports_dir().join(format!("{}_audit_report.{}", case_name, if format == "html" { "html" } else { "md" }))
+        case.reports_dir().join(format!(
+            "{}_audit_report.{}",
+            case_name,
+            if format == "html" { "html" } else { "md" }
+        ))
     });
 
     if format == "html" {
@@ -516,7 +593,14 @@ fn handle_report(config: &VoltConfig, case_name: &str, format: &str, output: Opt
     println!("🏛️ Forensic Audit Report Generated!");
     println!("  Destination: {}", out_path.display());
     println!("  Case:        {}", case_name);
-    println!("  Status:      {}", if case.metadata.status == CaseStatus::Sealed { "SEALED (Court-Ready)" } else { "DRAFT" });
+    println!(
+        "  Status:      {}",
+        if case.metadata.status == CaseStatus::Sealed {
+            "SEALED (Court-Ready)"
+        } else {
+            "DRAFT"
+        }
+    );
 
     Ok(())
 }
@@ -539,7 +623,10 @@ fn handle_verify(config: &VoltConfig, target: &Path) -> Result<()> {
         anyhow::bail!("Missing chain.jsonl in {:?}", chain_file);
     }
     let total_blocks = HashChain::verify_file(&chain_file)?;
-    println!("  ✓ Cryptographic hash chain: VERIFIED ({} sequential blocks intact)", total_blocks);
+    println!(
+        "  ✓ Cryptographic hash chain: VERIFIED ({} sequential blocks intact)",
+        total_blocks
+    );
 
     // 2. Verify Manifest Artifacts
     let manifest_file = case_dir.join("evidence_manifest.json");
@@ -554,10 +641,18 @@ fn handle_verify(config: &VoltConfig, target: &Path) -> Result<()> {
             }
             let current_hash = volt::utils::crypto::sha256_file(&full_path)?;
             if current_hash != entry.sha256 {
-                anyhow::bail!("Artifact TAMPERED: {:?} (expected {} vs found {})", rel, entry.sha256, current_hash);
+                anyhow::bail!(
+                    "Artifact TAMPERED: {:?} (expected {} vs found {})",
+                    rel,
+                    entry.sha256,
+                    current_hash
+                );
             }
         }
-        println!("  ✓ Manifest artifacts:       VERIFIED (all {} files match SHA-256)", manifest.total_artifacts);
+        println!(
+            "  ✓ Manifest artifacts:       VERIFIED (all {} files match SHA-256)",
+            manifest.total_artifacts
+        );
     }
 
     println!("\n✅ VERIFICATION PASSED — Evidence integrity is 100% intact and untampered.");
@@ -599,7 +694,11 @@ fn handle_status(config: &VoltConfig, case_filter: Option<String>) -> Result<()>
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() && path.join("case.json").exists() {
-                    let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
                     if seen_cases.contains(&name) {
                         continue;
                     }
@@ -620,7 +719,12 @@ fn handle_status(config: &VoltConfig, case_filter: Option<String>) -> Result<()>
                         "IDLE"
                     };
 
-                    println!("  • Case: {:<20} | Status: {:<38} | Path: {}", name, status, path.display());
+                    println!(
+                        "  • Case: {:<20} | Status: {:<38} | Path: {}",
+                        name,
+                        status,
+                        path.display()
+                    );
                 }
             }
         }
@@ -650,16 +754,28 @@ fn handle_screenshot(config: &VoltConfig, case_name: &str, label: Option<&str>) 
     Ok(())
 }
 
-fn handle_export(config: &VoltConfig, case_name: &str, format: &str, output: Option<PathBuf>) -> Result<()> {
+fn handle_export(
+    config: &VoltConfig,
+    case_name: &str,
+    format: &str,
+    output: Option<PathBuf>,
+) -> Result<()> {
     let case_dir = find_case_dir(config, case_name);
     let case = Case::open(&case_dir)?;
 
     if case.metadata.status != CaseStatus::Sealed {
-        anyhow::bail!("Case must be sealed before exporting. Run 'volt seal --case {}' first.", case_name);
+        anyhow::bail!(
+            "Case must be sealed before exporting. Run 'volt seal --case {}' first.",
+            case_name
+        );
     }
 
     let out_file = output.unwrap_or_else(|| {
-        PathBuf::from(format!("{}.{}", case_name, if format == "volt" { "volt" } else { "tar.gz" }))
+        PathBuf::from(format!(
+            "{}.{}",
+            case_name,
+            if format == "volt" { "volt" } else { "tar.gz" }
+        ))
     });
 
     println!("📦 Exporting case '{}' to {:?}...", case_name, out_file);
@@ -681,5 +797,184 @@ fn handle_export(config: &VoltConfig, case_name: &str, format: &str, output: Opt
     println!("  Bundle: {}", out_file.display());
     println!("  SHA256: {}", bundle_hash);
 
+    Ok(())
+}
+
+fn handle_env(
+    config: &VoltConfig,
+    case_name: &str,
+    set_opt: Option<&str>,
+    get_opt: Option<&str>,
+    unset_opt: Option<&str>,
+    clear_flag: bool,
+    json_flag: bool,
+    export_flag: bool,
+) -> Result<()> {
+    let case_dir = find_case_dir(config, case_name);
+    let case = Case::open(&case_dir)?;
+    let env_file = case.shared_env_file();
+
+    if let Some(parent) = env_file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Load existing environment variables
+    let mut vars: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    if env_file.exists() {
+        let content = std::fs::read_to_string(&env_file)?;
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let stripped = line.strip_prefix("export ").unwrap_or(line);
+            if let Some((k, v)) = stripped.split_once('=') {
+                let k = k.trim();
+                let v = v.trim();
+                let unquoted = unescape_env_val(v);
+                if !k.is_empty() {
+                    vars.insert(k.to_string(), unquoted);
+                }
+            }
+        }
+    }
+
+    if clear_flag {
+        std::fs::write(&env_file, "# VOLT Shared Environment Variables\n")?;
+        let sync_file = case_dir.join("overlay/upper/.volt_env_sync");
+        let _ = std::fs::write(&sync_file, "");
+        if let Ok(vault) = EvidenceVault::open(&case) {
+            let _ = vault.record_event("ENV_CLEAR", "cleared_all");
+        }
+        println!(
+            "⚡ Cleared all shared environment variables for case '{}'",
+            case_name
+        );
+        return Ok(());
+    }
+
+    if let Some(pair) = set_opt {
+        let (key, val) = pair.split_once('=').ok_or_else(|| {
+            anyhow::anyhow!(
+                "Invalid format for --set. Expected KEY=VALUE (e.g. --set TARGET=192.168.1.1)"
+            )
+        })?;
+        let key = key.trim();
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            anyhow::bail!(
+                "Invalid variable name '{}': must be alphanumeric and underscores",
+                key
+            );
+        }
+        vars.insert(key.to_string(), val.to_string());
+        save_env_file(&env_file, &vars)?;
+        let sync_file = case_dir.join("overlay/upper/.volt_env_sync");
+        let _ = std::fs::write(&sync_file, "");
+        if let Ok(vault) = EvidenceVault::open(&case) {
+            let _ = vault.record_event("ENV_SET", &format!("{}={}", key, val));
+        }
+        println!("✓ Set shared environment variable: {} = {}", key, val);
+        println!(
+            "  (Broadcast to all active and future terminals in case '{}')",
+            case_name
+        );
+        return Ok(());
+    }
+
+    if let Some(key) = unset_opt {
+        let key = key.trim();
+        if vars.remove(key).is_some() {
+            save_env_file(&env_file, &vars)?;
+            let sync_file = case_dir.join("overlay/upper/.volt_env_sync");
+            let _ = std::fs::write(&sync_file, "");
+            if let Ok(vault) = EvidenceVault::open(&case) {
+                let _ = vault.record_event("ENV_UNSET", key);
+            }
+            println!(
+                "✓ Unset shared environment variable '{}' from case '{}'",
+                key, case_name
+            );
+        } else {
+            println!("Variable '{}' was not set in case '{}'", key, case_name);
+        }
+        return Ok(());
+    }
+
+    if let Some(key) = get_opt {
+        let key = key.trim();
+        if let Some(val) = vars.get(key) {
+            println!("{}", val);
+            return Ok(());
+        } else {
+            anyhow::bail!("Variable '{}' not found in case '{}'", key, case_name);
+        }
+    }
+
+    if json_flag {
+        println!("{}", serde_json::to_string_pretty(&vars)?);
+        return Ok(());
+    }
+
+    if export_flag {
+        for (k, v) in &vars {
+            println!("export {}={}", k, escape_shell_arg(v));
+        }
+        return Ok(());
+    }
+
+    // Default: list all variables
+    println!("⚡ VOLT Shared Environment for Case '{}':", case_name);
+    println!("  File: {}", env_file.display());
+    if vars.is_empty() {
+        println!("  (No shared variables set yet)");
+        println!("  Tip: In any sandbox terminal, run: export KEY=VALUE");
+        println!(
+            "       Or from host: volt env --case {} --set KEY=VALUE\n",
+            case_name
+        );
+    } else {
+        println!();
+        for (k, v) in &vars {
+            println!("  \x1b[1;36m{:<20}\x1b[0m = {}", k, v);
+        }
+        println!(
+            "\n✓ {} variable(s) synchronized across all terminals.",
+            vars.len()
+        );
+    }
+
+    Ok(())
+}
+
+fn escape_shell_arg(val: &str) -> String {
+    if !val.is_empty()
+        && val
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '/')
+    {
+        return val.to_string();
+    }
+    format!("'{}'", val.replace('\'', "'\\''"))
+}
+
+fn unescape_env_val(val: &str) -> String {
+    let s = val.trim();
+    if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
+        s[1..s.len() - 1].replace("'\\''", "'")
+    } else if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
+        s[1..s.len() - 1].replace("\\\"", "\"").replace("\\$", "$")
+    } else {
+        s.replace("\\ ", " ")
+            .replace("\\'", "'")
+            .replace("\\\"", "\"")
+    }
+}
+
+fn save_env_file(path: &Path, vars: &std::collections::BTreeMap<String, String>) -> Result<()> {
+    let mut content = String::from("# VOLT Shared Environment Variables (Auto-synchronized)\n");
+    for (k, v) in vars {
+        content.push_str(&format!("export {}={}\n", k, escape_shell_arg(v)));
+    }
+    std::fs::write(path, content)?;
     Ok(())
 }

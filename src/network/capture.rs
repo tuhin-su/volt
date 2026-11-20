@@ -46,7 +46,11 @@ impl TcpdumpManager {
         if let Ok(Some(exit_status)) = child.try_wait() {
             tracing::warn!("tcpdump exited ({}); live packet capture requires CAP_NET_RAW or running with sudo", exit_status);
         } else {
-            tracing::info!("Started always-on tcpdump (PID: {}) writing to {:?}", child.id(), self.pcaps_dir);
+            tracing::info!(
+                "Started always-on tcpdump (PID: {}) writing to {:?}",
+                child.id(),
+                self.pcaps_dir
+            );
         }
 
         Ok(child)

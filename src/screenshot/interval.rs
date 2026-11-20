@@ -29,7 +29,10 @@ impl IntervalScreenshotWorker {
     }
 
     pub async fn run(self) {
-        tracing::info!("Screenshot interval worker started (every {:?})", self.interval);
+        tracing::info!(
+            "Screenshot interval worker started (every {:?})",
+            self.interval
+        );
         while self.running.load(Ordering::Relaxed) {
             sleep(self.interval).await;
             if !self.running.load(Ordering::Relaxed) {

@@ -1,9 +1,9 @@
+use crate::utils::crypto::sha256_file;
+use crate::utils::timestamps::now_rfc3339;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use crate::utils::crypto::sha256_file;
-use crate::utils::timestamps::now_rfc3339;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArtifactEntry {

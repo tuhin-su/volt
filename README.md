@@ -25,7 +25,8 @@
    - [`volt verify`](#8-volt-verify)
    - [`volt export`](#9-volt-export)
    - [`volt stop`](#10-volt-stop)
-6. [Multi-Terminal Workflow Guide](#-multi-terminal-workflow-guide)
+   - [`volt env`](#11-volt-env)
+6. [Multi-Terminal Workflow & Shared Environment](#-multi-terminal-workflow--shared-environment)
 7. [Case Storage & Directory Structure](#-case-storage--directory-structure)
 8. [Hardware Identity Spoofing & Anti-Analysis](#-hardware-identity-spoofing--anti-analysis)
 9. [Raw Packet Scanning & Sudo (`CAP_NET_RAW`)](#-raw-packet-scanning--sudo-cap_net_raw)
@@ -386,7 +387,35 @@ volt stop --case <CASE_ID>
 
 ---
 
-## 🖥️ Multi-Terminal Workflow Guide
+### 11. `volt env`
+Inspects, sets, unsets, and manages shared environment variables across all active and future terminals for a case.
+
+```bash
+# List all shared variables for a case
+volt env --case <CASE_ID>
+
+# Set a shared variable from the host (instantly broadcast to all terminals)
+volt env --case <CASE_ID> --set TARGET=192.168.1.100
+
+# Get value of a specific variable
+volt env --case <CASE_ID> --get TARGET
+
+# Output in JSON format
+volt env --case <CASE_ID> --json
+
+# Output in shell export syntax
+volt env --case <CASE_ID> --export
+
+# Unset a variable across all terminals
+volt env --case <CASE_ID> --unset TARGET
+
+# Clear all shared variables
+volt env --case <CASE_ID> --clear
+```
+
+---
+
+## 🖥️ Multi-Terminal Workflow & Shared Environment
 
 During an operation, you almost always need multiple terminals open concurrently:
 
@@ -395,15 +424,31 @@ During an operation, you almost always need multiple terminals open concurrently
 │ WINDOW 1: Primary Controller    │   │ WINDOW 2: Interactive Terminal  │
 │ $ volt start --case "ENG-2026"  │   │ $ volt join "ENG-2026"          │
 │ [VOLT:laptop-dell ~]#           │   │ [VOLT:laptop-dell ~]#           │
+│ export TARGET=10.10.10.5        │   │ echo $TARGET  # -> 10.10.10.5   │
 │ # Running web proxy / listeners │   │ # Running nmap -sS scan         │
 └─────────────────────────────────┘   └─────────────────────────────────┘
 ┌─────────────────────────────────┐   ┌─────────────────────────────────┐
 │ WINDOW 3: Interactive Terminal  │   │ WINDOW 4: Interactive Terminal  │
 │ $ volt join "ENG-2026"          │   │ $ volt join "ENG-2026"          │
 │ [VOLT:laptop-dell ~]#           │   │ [VOLT:laptop-dell ~]#           │
+│ export TOKEN="secret-jwt-123"   │   │ echo $TOKEN   # -> Immediately! │
 │ # Exploitation & remote SSH     │   │ # Log inspection & triage       │
 └─────────────────────────────────┘   └─────────────────────────────────┘
 ```
+
+### ⚡ Real-Time Cross-Terminal Environment Sharing Engine
+
+VOLT automatically tracks, broadcasts, and persists environment variables:
+1. **Zero-Configuration `export` Hook**: Any standard `export KEY=VALUE` run in ANY shell automatically persists to `/root/.volt_env` and synchronizes to every other terminal in real time.
+2. **Instant Pre-Command Sync**: If Terminal 1 exports a variable, Terminal 2 receives it before its very next command or prompt.
+3. **Persistent Across Session Restarts**: Stored inside the case's volatile overlay (`/root/.volt_env`). When you stop a session and start it tomorrow (`volt start --case <CASE>`), every variable is restored automatically.
+4. **In-Sandbox `volt-env` CLI**:
+   - `volt-env`: List all shared variables in a clean table.
+   - `volt-env set KEY VAL`: Set and broadcast to all terminals.
+   - `volt-env get KEY`: Read a variable value.
+   - `volt-env unset KEY`: Unset from all terminals.
+   - `volt-env clear`: Reset shared variables.
+5. **Host CLI `volt env`**: Full control from outside the sandbox via `volt env --case <CASE> --set ...`.
 
 Both approaches are supported:
 1. **Multiple OS Windows**: Open new tabs/windows and run `volt join <case>`.

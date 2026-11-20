@@ -76,6 +76,7 @@ flowchart TD
 | `volt stop` | Gracefully stop session, finalize logs |
 | `volt seal` | Hash-chain all evidence, generate integrity report |
 | `volt status` | Show active sessions |
+| `volt env [--set, --get, --unset, --clear, --json, --export]` | Manage shared environment variables across all active terminals |
 | `volt export <format>` | Export evidence bundle (tar.gz, ZIP with manifest) |
 
 **Tech:** Rust binary (`clap` CLI), manages Linux namespaces via `nix` crate, async with `tokio`.
@@ -110,6 +111,18 @@ Auto-generate or load from profile:
 - Profiles stored as `hardware_profile.json`
 - Presets: `laptop-dell`, `desktop-hp`, `server-lenovo`, `vm-virtualbox`, `vm-vmware`
 - Custom profile editor
+
+#### 2d: Real-Time Cross-Terminal Environment Sharing Engine
+- Shared storage file `/root/.volt_env` backed by case overlay (`overlay/upper/.volt_env`)
+- Atomic file-locked updates (`flock -x`) preventing race conditions
+- Pre-command (`trap ... DEBUG`) and pre-prompt (`PROMPT_COMMAND`) real-time sync with timestamp check (`[ -nt ]`)
+- Transparent Bash wrappers for `export` and `unset`
+- In-sandbox CLI utility `/volt-shims/volt-env` and `env-share` alias
+
+#### 2e: Raw Packet Scanning & Capability Preservation (`CAP_NET_RAW` / `CAP_NET_ADMIN`)
+- Retains initial user namespace under elevated runs (`sudo volt start`) to preserve raw socket capabilities (`SOCK_RAW`, `AF_PACKET`) required by `nmap -sS`, `nmap -sU`, `nmap -O`, `masscan`, `hping3`
+- Transparent non-interactive `sudo` shim inside the sandbox
+- Unprivileged rootless fallback with clear guidance on TCP connect scans (`nmap -sT`) and privilege requirements
 
 ---
 
@@ -339,11 +352,21 @@ volt/
 - [ ] CASE/UCO format support (forensic standard)
 
 ### Phase 7: Polish & Hardening (Week 9-10)
-- [ ] Comprehensive test suite
-- [ ] Documentation & usage guides
-- [ ] Edge case handling (crash recovery, partial sessions)
-- [ ] Performance optimization
-- [ ] Security audit of the tool itself
+- [x] Comprehensive test suite
+- [x] Documentation & usage guides
+- [x] Edge case handling (crash recovery, partial sessions)
+- [x] Performance optimization
+- [x] Security audit of the tool itself
+
+### Phase 8: Real-Time Cross-Terminal Environment Sharing & Raw Network Capabilities
+- [x] Real-time `/root/.volt_env` synchronized storage across all concurrent case shells
+- [x] Automatic zero-config `export` and `unset` shell hooks
+- [x] High-performance dirty-checking via Bash modification time (`[ -nt ]`) on `DEBUG` trap & `PROMPT_COMMAND`
+- [x] In-sandbox CLI `volt-env` & `env-share` for interactive variable management
+- [x] Host CLI `volt env --case <CASE>` supporting `--set`, `--get`, `--unset`, `--clear`, `--json`, `--export`
+- [x] Persistence across session reboots and case restarts (`overlay/upper/.volt_env`)
+- [x] Linux User Namespace preservation under root (`sudo volt start`) retaining `CAP_NET_RAW` / `CAP_NET_ADMIN`
+- [x] Seamless raw packet operations (`nmap -sS`, `nmap -sU`, `nmap -O`, `masscan`, `hping3`)
 
 ---
 

@@ -16,6 +16,7 @@ flowchart TD
     P6 --> P7["Phase 7: Evidence Vault & Hash Chain ✅"]
     P7 --> P8["Phase 8: Pre-flight Safety & Audit Report ✅"]
     P8 --> P9["Phase 9: Global ~/.cases & GUI Integration ✅"]
+    P9 --> P10["Phase 10: Real-Time Shared Env & CAP_NET_RAW Fix ✅"]
 ```
 
 ---
@@ -134,3 +135,23 @@ flowchart TD
 - [x] **9.2 Non-Root Compilation in `Makefile` and `install.sh`**
   - Non-root builds preserving user file ownership in `target/`.
   - `sudo` strictly restricted to copying files to `/usr/local/bin` and `/usr/local/share/volt/profiles`.
+
+---
+
+### Phase 10: Real-Time Cross-Terminal Environment Sharing & Raw Network Capability Fix
+- [x] **10.1 Real-Time Cross-Terminal Environment Engine (`src/sandbox/mounts.rs`)**
+  - Integrated `/root/.volt_env` shared variable store within case overlay upper directory (`overlay/upper/.volt_env`).
+  - Transparent `export` and `unset` Bash hooks with atomic non-blocking file locking (`flock -x`).
+  - High-performance, zero-latency dirty checking via Bash internal modification check (`[ -nt ]`) on every prompt (`PROMPT_COMMAND`) and command execution (`trap ... DEBUG`).
+  - Cross-terminal propagation: variables declared via standard `export` in any terminal immediately reflect across all active and subsequent terminals before executing subsequent commands.
+- [x] **10.2 In-Sandbox and Host CLI Tools (`src/sandbox/mounts.rs`, `src/cli.rs`, `src/main.rs`)**
+  - In-sandbox CLI utility `/volt-shims/volt-env` and alias `env-share` for tabular listing, setting, getting, unsetting, and clearing variables.
+  - Host CLI subcommand `volt env --case <CASE>` supporting `--set`, `--get`, `--unset`, `--clear`, `--json`, and `--export`.
+  - Case helper `shared_env_file()` (`src/core/case.rs`) ensuring consistent path resolution across all host workflows.
+- [x] **10.3 Persistence Across Reboots and Session Restarts**
+  - All shared environment variables persist in case volatile storage across `volt stop` and subsequent `volt start` / `volt join` invocations.
+- [x] **10.4 Raw Socket & User Namespace Kernel Fix (`src/sandbox/namespace.rs`)**
+  - Preserves root user namespace when executing with elevated privileges (`sudo volt start`), preventing `--unshare-user` from stripping capabilities over the host network namespace.
+  - Restores full operational support for raw packet scanning (`nmap -sS`, `nmap -sU`, `nmap -O`, `masscan`, `hping3`) with `CAP_NET_RAW` and `CAP_NET_ADMIN`.
+  - In unprivileged rootless sessions, provides informative forensic-grade advisory messages guiding operators on `nmap -sT` TCP connect scans and privilege escalation requirements.
+

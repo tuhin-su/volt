@@ -450,6 +450,9 @@ VOLT automatically tracks, broadcasts, and persists environment variables:
    - `volt-env clear`: Reset shared variables.
 5. **Host CLI `volt env`**: Full control from outside the sandbox via `volt env --case <CASE> --set ...`.
 
+> [!TIP]
+> For internal architecture, concurrency guarantees (`flock`), and latency benchmarks, see the [Environment Sharing Technical Guide](docs/environment-sharing.md).
+
 Both approaches are supported:
 1. **Multiple OS Windows**: Open new tabs/windows and run `volt join <case>`.
 2. **Single Window with `tmux`**: Run `tmux` inside your VOLT terminal and press `Ctrl+B %` or `Ctrl+B "` to split panes.
@@ -516,13 +519,38 @@ Evasive malware and defensive network scanners probe the local system to detect 
 
 ## ⚡ Raw Packet Scanning & Sudo (`CAP_NET_RAW`)
 
-Offensive security tools (`nmap -sS` SYN scans, `nmap -O` OS detection, `masscan`, `hping3`) require sending raw Ethernet/IP packets using `SOCK_RAW`.
+Offensive security tools (`nmap -sS` SYN scans, `nmap -sU` UDP scans, `nmap -O` OS detection, `masscan`, `hping3`) craft raw Ethernet/IP frames via `SOCK_RAW` and `AF_PACKET`.
 
-### How VOLT Handles This:
+### How VOLT Handles Capabilities:
+
 1. **You are UID 0 inside VOLT**: Inside the sandbox, `whoami` returns `root`.
-2. **Transparent `sudo` Shim**: If you or an automated script runs `sudo nmap -sS ...`, VOLT's transparent shim passes the command directly to the sandbox root process with **zero password prompts**.
-3. **`CAP_NET_RAW` Support**: When launching VOLT with `sudo volt start` or `setcap cap_net_raw+ep volt`, VOLT delegates raw socket capability to the sandbox while maintaining complete filesystem and process containment.
-4. **Host Safety**: Even while crafting raw network packets, the tool is strictly confined by OverlayFS and cannot touch host files or host SSH keys.
+2. **Transparent In-Sandbox `sudo` Shim**: If you or an automated script runs `sudo nmap ...`, VOLT's transparent shim passes the command directly to the sandbox root process with **zero password prompts**.
+3. **The User Namespace Capability Boundary**:
+   - The Linux kernel strictly checks `ns_capable(net->user_ns, CAP_NET_RAW)`.
+   - In unprivileged rootless mode (`volt start`), unsharing user namespaces isolates host credentials, which blocks raw socket creation across the host network stack.
+   - When launched with `sudo volt start`, VOLT **retains the initial user namespace** while preserving 100% of the mount (OverlayFS), PID, UTS, and IPC isolation barriers. This enables full `CAP_NET_RAW` and `CAP_NET_ADMIN` packet crafting inside the sandbox!
+4. **Host Safety**: Even while crafting raw network packets, the tool is strictly confined by OverlayFS and cannot touch host files or host credentials.
+
+### Enabling Raw Packet Scans for Your Current User:
+
+#### Option A: Grant Sudoers Execution (Recommended)
+Allow your non-root user account to launch VOLT without a password prompt:
+```bash
+echo "$USER ALL=(ALL) NOPASSWD: /usr/local/bin/volt" | sudo tee /etc/sudoers.d/volt-user
+sudo chmod 0440 /etc/sudoers.d/volt-user
+```
+Now, simply launch with `sudo volt start --case <CASE>`. All raw packet tools (`nmap -sS`, `nmap -sU`, `masscan`) will work flawlessly.
+
+#### Option B: Unprivileged TCP Connect Scanning (`nmap -sT`)
+If you are operating in an environment without `sudo` access, use standard TCP connect scans:
+```bash
+# Works completely unprivileged in any rootless VOLT session:
+nmap -sT -Pn -p- 127.0.0.1
+```
+TCP connect scans utilize standard stream sockets (`SOCK_STREAM`) and do not require `CAP_NET_RAW`.
+
+> [!NOTE]
+> For a deep dive into Linux kernel user namespace security checks, capability inheritance, and network modes, see the [Capabilities and Networking Guide](docs/capabilities-and-networking.md).
 
 ---
 
